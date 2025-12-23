@@ -8,5 +8,6 @@ import lombok.Data;
 public class LoginResponseWrapper {
 
 	private LoginCredentialsWrapper user;
-    private List<String> menuPermissions;
+   
+	private List<String> menuPermissions;
 }
