@@ -1,5 +1,8 @@
 package com.istlgroup.istl_group_crm_backend.repo;
 
+import java.util.List;
+import java.util.Optional;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -11,5 +14,13 @@ public interface LoginRepo extends JpaRepository<LoginEntity,Long> {
 	@Query("SELECT c FROM LoginEntity c WHERE (c.user_id = :username OR c.email = :username OR c.phone = :username) AND c.password = :password")
 	public LoginEntity AuthenticateUser(@Param("username") String username, @Param("password") String password);
 	
+	@Query("SELECT u.name FROM LoginEntity u WHERE u.id = :id")
+    public Optional<String> findRoleByUserId(@Param("id") Long id);
+
+	@Query("SELECT u FROM LoginEntity u WHERE u.created_by = :userId")
+	public List<LoginEntity> getAllUsers(@Param("userId") Long userId);
+	
+	
+
 
 }

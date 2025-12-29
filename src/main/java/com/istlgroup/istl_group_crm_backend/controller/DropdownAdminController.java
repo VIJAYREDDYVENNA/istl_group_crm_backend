@@ -16,7 +16,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin/dropdowns")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = "${cros.allowed-origins}")
 public class DropdownAdminController {
     
     private final DropdownAdminService adminService;

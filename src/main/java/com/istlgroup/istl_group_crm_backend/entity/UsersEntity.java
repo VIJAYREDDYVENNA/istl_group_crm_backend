@@ -10,11 +10,10 @@ import jakarta.persistence.Table;
 import lombok.Data;
 
 @Entity
-@Table(name = "users")
 @Data
-public class LoginEntity {
-
-    @Id
+@Table(name="users")
+public class UsersEntity {
+	@Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private String user_id;

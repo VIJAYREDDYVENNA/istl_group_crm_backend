@@ -14,7 +14,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/filters")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = "${cros.allowed-origins}")
 public class DropdownFilterController {
     
     private final DropdownFilterService filterService;

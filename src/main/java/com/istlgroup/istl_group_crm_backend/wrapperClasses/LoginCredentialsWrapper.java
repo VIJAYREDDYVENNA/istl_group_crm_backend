@@ -1,5 +1,7 @@
 package com.istlgroup.istl_group_crm_backend.wrapperClasses;
 
+import java.time.LocalDateTime;
+
 import lombok.Data;
 
 @Data
@@ -13,4 +15,6 @@ public class LoginCredentialsWrapper {
     private String email;
     private String phone;
 	private Long is_active;
+	private LocalDateTime created_at;
+	private LocalDateTime last_login_at;
 }
