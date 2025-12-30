@@ -1,6 +1,7 @@
 package com.istlgroup.istl_group_crm_backend.controller;
 
 
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,19 +34,37 @@ public class LoginController {
 		return logingService.AuthenticateUser(credentials);
 	}
 	
+	//Update User Deatils
 	@PutMapping("/updateUser/{id}")
 	public ResponseEntity<?> UpdateUser(@RequestBody LoginEntity newData,@PathVariable Long id) throws CustomException {
 		return logingService.UpdateUser(newData,id);
 	}
 	
+	//Update User Password
 	@PutMapping("/updatePassword/{id}")
 	public ResponseEntity<String> UpdatePassword(@RequestBody Map<String, String> credentials,@PathVariable Long id) throws CustomException{
 		return  logingService.UpdatePassword(credentials,id);
 	}
 	
+	//User Related Data Fetching for Users page in the UI
 	@GetMapping("/users/{userId}")
 	public UsersResponseWrapper Users(@PathVariable Long userId)throws CustomException {
 		return logingService.Users(userId);
 	}
 	
+	//Get Page Permissions for Users Page
+	@GetMapping("/pagePermissions/{id}")
+	public ResponseEntity<?> GetPagePermissions(@PathVariable Long id)throws CustomException {
+
+	    Object response = logingService.GetPagePermissions(id);
+	    return ResponseEntity.ok(response);
+	}
+	
+	@GetMapping("/menuPermissions/{id}")
+	public List<String> GetMenuPermissions(@PathVariable Long id)throws CustomException {
+
+//	    Object response = logingService.GetMenuPermissions(id);
+	    return logingService.GetMenuPermissions(id);
+	}
+
 }

@@ -82,10 +82,14 @@ public class LoginService {
 		}
 
 
+		  List<PermissionsEntity> p_permissions = page_permissions.findPermissionsByRoleId(response.getId());
+		  
+		  Map<String, List<String>> pagesPermissions= extractPagePermissions(p_permissions);
+		  
 		LoginResponseWrapper loginResponseWrapper=new LoginResponseWrapper();
 		loginResponseWrapper.setUser(wrappedData);
 		loginResponseWrapper.setMenuPermissions(permissionsMenu);
-		
+		loginResponseWrapper.setPagePermissions(pagesPermissions);
 		return ResponseEntity.status(HttpStatus.OK).body(loginResponseWrapper);
 	}
 
@@ -104,9 +108,9 @@ public class LoginService {
 	    if (p.getSales_leads() == 1) permissions.add("SALES_LEADS");
 	    if (p.getSales_estimation() == 1) permissions.add("SALES_ESTIMATION");
 	    if (p.getProcurement_venders() == 1) permissions.add("PROCUREMENT_VENDERS");
-	    if (p.getProcurement_cotations_recived() == 1) permissions.add("PROCUREMENT_COTATIONS");
-	    if (p.getProcurement_purcharge_orders() == 1) permissions.add("PROCUREMENT_PURCHASE_ORDERS");
-	    if (p.getProcurement_bills_recived() == 1) permissions.add("PROCUREMENT_BILLS");
+	    if (p.getProcurement_quotations_recived() == 1) permissions.add("PROCUREMENT_QUOTATIONS");
+	    if (p.getProcurement_purchase_orders() == 1) permissions.add("PROCUREMENT_PURCHASE_ORDERS");
+	    if (p.getProcurement_bills_received() == 1) permissions.add("PROCUREMENT_BILLS");
 
 	    return permissions;
 	}
@@ -217,8 +221,7 @@ public class LoginService {
 
 	public UsersResponseWrapper Users(Long userId) throws CustomException {
 
-	    LoginEntity requestingUser = loginRepo.findById(userId)
-	        .orElseThrow(() -> new CustomException("Invalid User"));
+	     loginRepo.findById(userId).orElseThrow(() -> new CustomException("Invalid User"));
 
 	    List<LoginEntity> users;
 
@@ -249,6 +252,7 @@ public class LoginService {
 	                wrapper.setPagePermissionsCount((long) p_permissions.size());
 	            }
 
+	           
 	            MenuPermissionsEntity permissions = menu_permissions.findByUsersId(user.getId());
 	            if (permissions == null) {
 	                wrapper.setMenuPermissionsCount((long) 0);
@@ -279,29 +283,98 @@ public class LoginService {
 
 	    return response;
 	}
-	private Map<String, List<String>> extractGroupedPermissions(List<PermissionsEntity> permissionsEntities) {
+	
+	
+
+	public List<String> GetMenuPermissions(Long id) throws CustomException {
+
+	    // Validate user
+	    loginRepo.findById(id)
+	            .orElseThrow(() -> new CustomException("Invalid User"));
+
+	    MenuPermissionsEntity menuPermissions =
+	            menu_permissions.findByUsersId(id);
+
+	    // If no menu permissions found
+	    if (menuPermissions == null) {
+	        return List.of("No Menu Permissions");
+	    }
+
+	    List<String> permissions = extractPermissions(menuPermissions);
+	    
+	    
+
+	    // If extracted list is empty or null
+	    if (permissions == null || permissions.isEmpty()) {
+	        return List.of("No Menu Permissions");
+	    }
+
+	    return permissions;
+	}
+
+	
+	public Object GetPagePermissions(Long id) throws CustomException {
+
+	    // 1. Validate user
+	    loginRepo.findById(id)
+	            .orElseThrow(() -> new CustomException("Invalid User"));
+
+	    // 2. Fetch permissions
+	    List<PermissionsEntity> p_permissions =
+	            page_permissions.findPermissionsByRoleId(id);
+
+	    // 3. If no permissions → return message
+	    if (p_permissions == null || p_permissions.isEmpty()) {
+	        return "No Permissions";
+	    }
+	    System.err.println(extractPagePermissions(p_permissions));
+	    // 4. Return permissions map
+	    return extractPagePermissions(p_permissions);
+	}
+
+	
+	
+	private Map<String, List<String>> extractPagePermissions(List<PermissionsEntity> permissionsEntities) {
 
 	    Map<String, List<String>> result = new HashMap<>();
 
 	    for (PermissionsEntity p : permissionsEntities) {
 
-	        if (p.getName() == null || !p.getName().contains(".")) {
-	            continue; // safety
+	        if (p.getName() == null) {
+	            continue;
 	        }
 
-	        String[] parts = p.getName().split("\\.");
+	        String permissionName = p.getName();
+	        String[] parts = permissionName.split("\\.");
 
-	        String module = parts[0].toUpperCase();   // USERS
-	        String action = parts[1].toUpperCase();   // VIEW
+	        String module;
+	        String action;
 
-	        result.computeIfAbsent(module, k -> new ArrayList<>())
-	              .add(action);
+	        if (parts.length >= 3) {
+	            // Handle nested permissions: quotations.sales.view -> module="QUOTATIONS.SALES", action="VIEW"
+	            // Join all parts except the last as module, last part is action
+	            StringBuilder moduleBuilder = new StringBuilder();
+	            for (int i = 0; i < parts.length - 1; i++) {
+	                if (i > 0) moduleBuilder.append(".");
+	                moduleBuilder.append(parts[i].toUpperCase());
+	            }
+	            module = moduleBuilder.toString();
+	            action = parts[parts.length - 1].toUpperCase();
+	            
+	        } else if (parts.length == 2) {
+	            // Simple permission: users.view -> module="USERS", action="VIEW"
+	            module = parts[0].toUpperCase();
+	            action = parts[1].toUpperCase();
+	            
+	        } else {
+	            System.err.println("Invalid permission format: " + permissionName);
+	            continue;
+	        }
+
+	        result.computeIfAbsent(module, k -> new ArrayList<>()).add(action);
 	    }
 
 	    return result;
 	}
-
-	
-
 	
 }
