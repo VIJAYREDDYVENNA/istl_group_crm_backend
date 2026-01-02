@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.istlgroup.istl_group_crm_backend.customException.CustomException;
 import com.istlgroup.istl_group_crm_backend.entity.LoginEntity;
+import com.istlgroup.istl_group_crm_backend.entity.UsersEntity;
 import com.istlgroup.istl_group_crm_backend.service.UsersService;
 
 @RestController
@@ -45,5 +47,16 @@ public class UsersController {
 	@PutMapping("/updatePagePermissions/{id}")
 	public ResponseEntity<?> UpdatePagePermissions(@PathVariable Long id, @RequestBody Map<String, Object> requestData) throws CustomException {
 		return usersService.UpdatePagePermissions(id, requestData);
+	}
+	
+	//User Id Availability Check
+	@GetMapping("/isUserIdExist/{userid}")
+	public boolean IsUserIdExist(@PathVariable String userid) {
+		return usersService.IsUserIdExist(userid);
+	}
+	
+	@PostMapping("/addNewUser")
+	public ResponseEntity<String> AddNewUser(@RequestBody UsersEntity user) throws CustomException{
+		return usersService.AddNewUser(user);
 	}
 }

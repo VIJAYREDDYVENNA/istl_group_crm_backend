@@ -1,11 +1,15 @@
 package com.istlgroup.istl_group_crm_backend.service;
 
+import java.lang.reflect.Field;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -15,10 +19,11 @@ import org.springframework.stereotype.Service;
 import com.istlgroup.istl_group_crm_backend.customException.CustomException;
 import com.istlgroup.istl_group_crm_backend.entity.LoginEntity;
 import com.istlgroup.istl_group_crm_backend.entity.MenuPermissionsEntity;
-import com.istlgroup.istl_group_crm_backend.entity.PermissionsEntity;
+import com.istlgroup.istl_group_crm_backend.entity.PagePermissionsEntity;
 import com.istlgroup.istl_group_crm_backend.repo.LoginRepo;
 import com.istlgroup.istl_group_crm_backend.repo.MenuPermissionsRepo;
-import com.istlgroup.istl_group_crm_backend.repo.PermissionsRepo;
+import com.istlgroup.istl_group_crm_backend.repo.PagePermissionsRepo;
+
 import com.istlgroup.istl_group_crm_backend.wrapperClasses.LoginCredentialsWrapper;
 import com.istlgroup.istl_group_crm_backend.wrapperClasses.LoginResponseWrapper;
 import com.istlgroup.istl_group_crm_backend.wrapperClasses.UserWrapper;
@@ -34,9 +39,12 @@ public class LoginService {
 	@Autowired
 	private MenuPermissionsRepo menu_permissions;
 	
-	@Autowired
-	private PermissionsRepo page_permissions;
+//	@Autowired
+//	private PermissionsRepo page_permissions;
 
+	@Autowired
+	private PagePermissionsRepo pagePermissions;
+	
 	public ResponseEntity<LoginResponseWrapper> AuthenticateUser(Map<String, String> credentials) throws CustomException{
 		
 		String username=credentials.get("username");
@@ -82,14 +90,17 @@ public class LoginService {
 		}
 
 
-		  List<PermissionsEntity> p_permissions = page_permissions.findPermissionsByRoleId(response.getId());
-		  
-		  Map<String, List<String>> pagesPermissions= extractPagePermissions(p_permissions);
+//		  List<PermissionsEntity> p_permissions = page_permissions.findPermissionsByRoleId(response.getId());
+//		  System.err.println(pagePermissions.findByUserId(response.getId()));
+		  Optional<PagePermissionsEntity> res=pagePermissions.findByUserId(response.getId());
+		  Map<String, List<String>> PagePermissions =extractPagePermissionsData(res);
+//		  System.err.println(result);
+//		  Map<String, List<String>> pagesPermissions= extractPagePermissions(p_permissions);
 		  
 		LoginResponseWrapper loginResponseWrapper=new LoginResponseWrapper();
 		loginResponseWrapper.setUser(wrappedData);
 		loginResponseWrapper.setMenuPermissions(permissionsMenu);
-		loginResponseWrapper.setPagePermissions(pagesPermissions);
+		loginResponseWrapper.setPagePermissions(PagePermissions);
 		return ResponseEntity.status(HttpStatus.OK).body(loginResponseWrapper);
 	}
 
@@ -154,70 +165,6 @@ public class LoginService {
 		
 	}
 
-//	public UsersResponseWrapper Users(Long userId) throws CustomException {
-//
-//	    LoginEntity requestingUser = loginRepo.findById(userId)
-//	        .orElseThrow(() -> new CustomException("Invalid User"));
-//
-//	    List<LoginEntity> users;
-//	    
-//	    // If SuperAdmin (userId = 1), get all users including SuperAdmin
-//	    if (userId == 1L) {
-//	        users = loginRepo.findAll(); // Get all users in the system
-//	    } else {
-//	        // For other users, get only users created by them
-//	        users = loginRepo.getAllUsers(userId);
-//	    }
-//
-//	    List<UserWrapper> userWrappers = users.stream()
-//	        .map(user -> {
-//	            UserWrapper wrapper = new UserWrapper();
-//	            wrapper.setId(user.getId());
-//	            wrapper.setUser_id(user.getUser_id());
-//	            wrapper.setEmail(user.getEmail());
-//	            wrapper.setName(user.getName());
-//	            wrapper.setPhone(user.getPhone());
-//	            wrapper.setIs_active(user.getIs_active());
-//	            wrapper.setCreated_at(user.getCreated_at());
-//	            wrapper.setRole(user.getRole());
-//
-//	            List<PermissionsEntity> p_permissions = page_permissions.findPermissionsByRoleId(user.getId());
-//	            if (p_permissions == null || p_permissions.isEmpty()) {
-//	                wrapper.setPagePermissionsCount((long) 0);
-//	            } else {
-//	                wrapper.setPagePermissionsCount((long) p_permissions.size());
-//	            }
-//
-//	            MenuPermissionsEntity permissions = menu_permissions.findByUsersId(user.getId());
-//	            if (permissions == null) {
-//	                wrapper.setMenuPermissionsCount((long) 0);
-//	            } else {
-//	                List<String> menu_list = extractPermissions(permissions);
-//	                wrapper.setMenuPermissionsCount((long) menu_list.size());
-//	            }
-//
-//	            return wrapper;
-//	        })
-//	        .toList();
-//
-//	    int totalUsers = users.size();
-//	    int activeUsers = (int) users.stream().filter(u -> u.getIs_active() == 1).count();
-//	    int inactiveUsers = (int) users.stream().filter(u -> u.getIs_active() == 0).count();
-//
-//	    List<String> roles = users.stream()
-//	            .map(LoginEntity::getRole)
-//	            .distinct()
-//	            .toList();
-//
-//	    UsersResponseWrapper response = new UsersResponseWrapper();
-//	    response.setUserWrapper(userWrappers);
-//	    response.setTotalUsers(totalUsers);
-//	    response.setActiveUsers(activeUsers);
-//	    response.setInactiveUsers(inactiveUsers);
-//	    response.setRoles(roles);
-//
-//	    return response;
-//	}
 
 	public UsersResponseWrapper Users(Long userId) throws CustomException {
 
@@ -245,12 +192,19 @@ public class LoginService {
 	            wrapper.setCreated_at(user.getCreated_at());
 	            wrapper.setRole(user.getRole());
 
-	            List<PermissionsEntity> p_permissions = page_permissions.findPermissionsByRoleId(user.getId());
-	            if (p_permissions == null || p_permissions.isEmpty()) {
-	                wrapper.setPagePermissionsCount((long) 0);
-	            } else {
-	                wrapper.setPagePermissionsCount((long) p_permissions.size());
-	            }
+//	            List<PermissionsEntity> p_permissions = page_permissions.findPermissionsByRoleId(user.getId());
+	            Optional<PagePermissionsEntity> p_permissions =
+	                    pagePermissions.findByUserId(user.getId());
+
+	            long totalPermissionCount =countEnabledPagePermissions(p_permissions);
+
+	            wrapper.setPagePermissionsCount(totalPermissionCount);
+
+//	            if (p_permissions == null || p_permissions.isEmpty()) {
+//	                wrapper.setPagePermissionsCount((long) 0);
+//	            } else {
+//	                wrapper.setPagePermissionsCount((long) p_permissions.size());
+//	            }
 
 	           
 	            MenuPermissionsEntity permissions = menu_permissions.findByUsersId(user.getId());
@@ -285,6 +239,41 @@ public class LoginService {
 	}
 	
 	
+	public long countEnabledPagePermissions(Optional<PagePermissionsEntity> res) {
+
+	    if (res.isEmpty()) {
+	        return 0L;
+	    }
+
+	    PagePermissionsEntity entity = res.get();
+	    long count = 0;
+
+	    for (Field field : PagePermissionsEntity.class.getDeclaredFields()) {
+	        field.setAccessible(true);
+
+	        try {
+	            Object value = field.get(entity);
+
+	            // Skip non-permission fields
+	            if (field.getName().equals("id") ||
+	                field.getName().equals("user_id") ||
+	                field.getName().equals("created_at") ||
+	                field.getName().equals("updated_at")) {
+	                continue;
+	            }
+
+	            // Count only enabled permissions
+	            if (value instanceof Integer && ((Integer) value) == 1) {
+	                count++;
+	            }
+
+	        } catch (IllegalAccessException e) {
+	            throw new RuntimeException("Failed to count page permissions", e);
+	        }
+	    }
+
+	    return count;
+	}
 
 	public List<String> GetMenuPermissions(Long id) throws CustomException {
 
@@ -313,68 +302,201 @@ public class LoginService {
 	}
 
 	
+//	public Object GetPagePermissions(Long id) throws CustomException {
+//
+//	    // 1. Validate user
+//	    loginRepo.findById(id)
+//	            .orElseThrow(() -> new CustomException("Invalid User"));
+//
+//	    // 2. Fetch permissions
+//	    List<PermissionsEntity> p_permissions =
+//	            page_permissions.findPermissionsByRoleId(id);
+//
+//	    // 3. If no permissions → return message
+//	    if (p_permissions == null || p_permissions.isEmpty()) {
+//	        return "No Permissions";
+//	    }
+//	  
+//	    // 4. Return permissions map
+//	    return extractPagePermissions(p_permissions);
+//	}
+
 	public Object GetPagePermissions(Long id) throws CustomException {
 
 	    // 1. Validate user
 	    loginRepo.findById(id)
 	            .orElseThrow(() -> new CustomException("Invalid User"));
 
-	    // 2. Fetch permissions
-	    List<PermissionsEntity> p_permissions =
-	            page_permissions.findPermissionsByRoleId(id);
+	    // 2. Fetch page permissions (single row per user)
+	    Optional<PagePermissionsEntity> pPermissions =pagePermissions.findByUserId(id);
 
-	    // 3. If no permissions → return message
-	    if (p_permissions == null || p_permissions.isEmpty()) {
+	    // 3. If no permissions row
+	    if (pPermissions.isEmpty()) {
 	        return "No Permissions";
 	    }
-	    System.err.println(extractPagePermissions(p_permissions));
-	    // 4. Return permissions map
-	    return extractPagePermissions(p_permissions);
+
+	    // 4. Convert entity → UI format
+	    Map<String, List<String>> permissionsMap = extractPagePermissions(pPermissions.get());
+	    System.err.println(permissionsMap);
+	    // 5. If user has no enabled permissions
+	    if (permissionsMap.isEmpty()) {
+	        return "No Permissions";
+	    }
+
+	    return permissionsMap;
 	}
 
-	
-	
-	private Map<String, List<String>> extractPagePermissions(List<PermissionsEntity> permissionsEntities) {
+	private Map<String, List<String>> extractPagePermissions(PagePermissionsEntity entity) {
 
-	    Map<String, List<String>> result = new HashMap<>();
+	    Map<String, List<String>> result = new LinkedHashMap<>();
 
-	    for (PermissionsEntity p : permissionsEntities) {
+	    for (Field field : PagePermissionsEntity.class.getDeclaredFields()) {
+	        field.setAccessible(true);
 
-	        if (p.getName() == null) {
-	            continue;
-	        }
+	        try {
+	            Object value = field.get(entity);
 
-	        String permissionName = p.getName();
-	        String[] parts = permissionName.split("\\.");
-
-	        String module;
-	        String action;
-
-	        if (parts.length >= 3) {
-	            // Handle nested permissions: quotations.sales.view -> module="QUOTATIONS.SALES", action="VIEW"
-	            // Join all parts except the last as module, last part is action
-	            StringBuilder moduleBuilder = new StringBuilder();
-	            for (int i = 0; i < parts.length - 1; i++) {
-	                if (i > 0) moduleBuilder.append(".");
-	                moduleBuilder.append(parts[i].toUpperCase());
+	            // Skip non-enabled permissions
+	            if (!(value instanceof Integer) || ((Integer) value) != 1) {
+	                continue;
 	            }
-	            module = moduleBuilder.toString();
-	            action = parts[parts.length - 1].toUpperCase();
-	            
-	        } else if (parts.length == 2) {
-	            // Simple permission: users.view -> module="USERS", action="VIEW"
-	            module = parts[0].toUpperCase();
-	            action = parts[1].toUpperCase();
-	            
-	        } else {
-	            System.err.println("Invalid permission format: " + permissionName);
-	            continue;
-	        }
 
-	        result.computeIfAbsent(module, k -> new ArrayList<>()).add(action);
+	            String fieldName = field.getName();
+
+	            // Skip non-permission fields
+	            if (fieldName.equals("id") ||
+	                fieldName.equals("user_id") ||
+	                fieldName.equals("created_at") ||
+	                fieldName.equals("updated_at")) {
+	                continue;
+	            }
+
+	            // users_view → USERS : VIEW
+	            // quotations_sales_approve → QUOTATIONS.SALES : APPROVE
+	            String[] parts = fieldName.split("_");
+
+	            String action = parts[parts.length - 1].toUpperCase();
+	            String module;
+
+	            if (parts.length > 2) {
+	                module = String.join(".",
+	                        Arrays.stream(parts, 0, parts.length - 1)
+	                              .map(String::toUpperCase)
+	                              .toArray(String[]::new));
+	            } else {
+	                module = parts[0].toUpperCase();
+	            }
+
+	            result.computeIfAbsent(module, k -> new ArrayList<>()).add(action);
+
+	        } catch (IllegalAccessException e) {
+	            throw new RuntimeException("Failed to extract page permissions", e);
+	        }
 	    }
 
 	    return result;
 	}
+
 	
+//	private Map<String, List<String>> extractPagePermissions(List<PermissionsEntity> permissionsEntities) {
+//
+//	    Map<String, List<String>> result = new HashMap<>();
+//
+//	    for (PermissionsEntity p : permissionsEntities) {
+//
+//	        if (p.getName() == null) {
+//	            continue;
+//	        }
+//
+//	        String permissionName = p.getName();
+//	        String[] parts = permissionName.split("\\.");
+//
+//	        String module;
+//	        String action;
+//
+//	        if (parts.length >= 3) {
+//	            // Handle nested permissions: quotations.sales.view -> module="QUOTATIONS.SALES", action="VIEW"
+//	            // Join all parts except the last as module, last part is action
+//	            StringBuilder moduleBuilder = new StringBuilder();
+//	            for (int i = 0; i < parts.length - 1; i++) {
+//	                if (i > 0) moduleBuilder.append(".");
+//	                moduleBuilder.append(parts[i].toUpperCase());
+//	            }
+//	            module = moduleBuilder.toString();
+//	            action = parts[parts.length - 1].toUpperCase();
+//	            
+//	        } else if (parts.length == 2) {
+//	            // Simple permission: users.view -> module="USERS", action="VIEW"
+//	            module = parts[0].toUpperCase();
+//	            action = parts[1].toUpperCase();
+//	            
+//	        } else {
+//	            
+//	            continue;
+//	        }
+//
+//	        result.computeIfAbsent(module, k -> new ArrayList<>()).add(action);
+//	    }
+//
+//	    return result;
+//	}
+//	
+	
+	
+	public Map<String, List<String>> extractPagePermissionsData(
+	        Optional<PagePermissionsEntity> res) {
+
+	    if (res.isEmpty()) {
+	        return Collections.emptyMap();
+	    }
+
+	    PagePermissionsEntity entity = res.get();
+	    Map<String, List<String>> result = new LinkedHashMap<>();
+
+	    for (Field field : PagePermissionsEntity.class.getDeclaredFields()) {
+	        field.setAccessible(true);
+
+	        try {
+	            Object value = field.get(entity);
+
+	            // Skip non-integer or non-enabled permissions
+	            if (!(value instanceof Integer) || ((Integer) value) != 1) {
+	                continue;
+	            }
+
+	            String fieldName = field.getName();
+
+	            // Skip non-permission fields
+	            if (fieldName.equals("id") ||
+	                fieldName.equals("user_id") ||
+	                fieldName.equals("created_at") ||
+	                fieldName.equals("updated_at")) {
+	                continue;
+	            }
+
+	            // Split column name
+	            String[] parts = fieldName.split("_");
+
+	            String action = parts[parts.length - 1].toUpperCase();
+	            String module;
+
+	            // Handle nested modules: quotations_sales_view → QUOTATIONS.SALES
+	            if (parts.length > 2) {
+	                module = String.join(".",
+	                        Arrays.stream(parts, 0, parts.length - 1)
+	                              .map(String::toUpperCase)
+	                              .toArray(String[]::new));
+	            } else {
+	                module = parts[0].toUpperCase();
+	            }
+
+	            result.computeIfAbsent(module, k -> new ArrayList<>()).add(action);
+
+	        } catch (IllegalAccessException e) {
+	            throw new RuntimeException("Failed to extract permissions", e);
+	        }
+	    }
+
+	    return result;
+	}
 }

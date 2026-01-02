@@ -57,6 +57,7 @@ public class LoginController {
 	public ResponseEntity<?> GetPagePermissions(@PathVariable Long id)throws CustomException {
 
 	    Object response = logingService.GetPagePermissions(id);
+	  
 	    return ResponseEntity.ok(response);
 	}
 	

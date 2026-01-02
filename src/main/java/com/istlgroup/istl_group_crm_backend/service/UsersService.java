@@ -2,9 +2,11 @@ package com.istlgroup.istl_group_crm_backend.service;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import org.mindrot.jbcrypt.BCrypt;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -111,7 +113,7 @@ public class UsersService {
 
         @SuppressWarnings("unchecked")
         List<Integer> permissionIds = (List<Integer>) requestData.get("permissionIds");
-
+     
         if (permissionIds == null) {
             return ResponseEntity.badRequest().body("Permission IDs are required");
         }
@@ -140,4 +142,128 @@ public class UsersService {
 
         return ResponseEntity.ok("Page permissions updated successfully for role: " + roleName);
     }
+
+	public boolean IsUserIdExist(String userid) {
+		UsersEntity re=usersRepo.isUserIdExist(userid);
+		System.err.println(re);
+		if(re==null) {
+			return false;
+		}
+		return true;
+	}
+
+	public ResponseEntity<String> AddNewUser(UsersEntity user) throws CustomException{
+		
+	
+		
+		List<String> errors = new ArrayList<>();
+
+	    if (user.getCreated_by() == null) {
+	        errors.add("Created by is required");
+	    }
+
+	    if (user.getUser_id() == null || user.getUser_id().trim().isEmpty()) {
+	        errors.add("User ID is required");
+	    }
+
+	    if (user.getEmail() == null || user.getEmail().trim().isEmpty()) {
+	        errors.add("Email is required");
+	    }
+
+	    if (user.getName() == null || user.getName().trim().isEmpty()) {
+	        errors.add("Name is required");
+	    }
+
+	    if (user.getPassword() == null || user.getPassword().trim().isEmpty()) {
+	        errors.add("Password is required");
+	    }
+
+	    if (user.getPhone() == null || user.getPhone().trim().isEmpty()) {
+	        errors.add("Phone number is required");
+	    }
+
+	    if (user.getRole() == null || user.getRole().trim().isEmpty()) {
+	        errors.add("Role is required");
+	    }
+	    
+	    if (user.getIs_active() == null) {
+	        errors.add("User May Be Active");
+	    }
+
+	    if (!errors.isEmpty()) {
+	        throw new CustomException(String.join(", ", errors));
+	    }
+
+	  
+	    String encryptedPassword = BCrypt.hashpw(user.getPassword(), BCrypt.gensalt());
+	    user.setPassword(encryptedPassword);
+	    
+//	    MenuPermissionsEntity mp =menuPermissionsRepo.findByUsersId(user.getCreated_by());
+//	    System.err.println(mp);
+//	    System.err.println(extractPermissions(mp));
+	    
+    
+//	    UsersEntity newUser = usersRepo.save(user);
+//	    if (newUser == null) {
+//	        throw new CustomException("Insertion Failed");
+//	    }
+//
+//	    // 2. Fetch creator permissions
+//	    MenuPermissionsEntity creatorPermissions = menuPermissionsRepo.findByUsersId(user.getCreated_by());
+//
+//	    if (creatorPermissions == null) {
+//	        throw new CustomException("Creator menu permissions not found");
+//	    }
+//
+//	    // 3. Clone permissions
+//	    MenuPermissionsEntity newUserPermissions = new MenuPermissionsEntity();
+//	    newUserPermissions.setUsersId(newUser.getId());
+//
+//	    newUserPermissions.setDashboard(creatorPermissions.getDashboard());
+//	    newUserPermissions.setAnalytics(creatorPermissions.getAnalytics());
+//	    newUserPermissions.setDocuments(creatorPermissions.getDocuments());
+//	    newUserPermissions.setSettings(creatorPermissions.getSettings());
+//	    newUserPermissions.setFollow_ups(creatorPermissions.getFollow_ups());
+//	    newUserPermissions.setReports(creatorPermissions.getReports());
+//	    newUserPermissions.setInvoices(creatorPermissions.getInvoices());
+//	    newUserPermissions.setSales_clients(creatorPermissions.getSales_clients());
+//	    newUserPermissions.setSales_leads(creatorPermissions.getSales_leads());
+//	    newUserPermissions.setSales_estimation(creatorPermissions.getSales_estimation());
+//	    newUserPermissions.setProcurement_venders(
+//	            creatorPermissions.getProcurement_venders());
+//	    newUserPermissions.setProcurement_quotations_recived(
+//	            creatorPermissions.getProcurement_quotations_recived());
+//	    newUserPermissions.setProcurement_purchase_orders(
+//	            creatorPermissions.getProcurement_purchase_orders());
+//	    newUserPermissions.setProcurement_bills_received(
+//	            creatorPermissions.getProcurement_bills_received());
+//
+//	    // 4. Save permissions
+//	    menuPermissionsRepo.save(newUserPermissions);
+	       
+	    return ResponseEntity.ok("New User Added Successfully");
+		
+	}
+	
+	private List<String> extractPermissions(MenuPermissionsEntity p) {
+
+	    List<String> permissions = new ArrayList<>();
+
+	    if (p.getDashboard() == 1) permissions.add("DASHBOARD");
+	    if (p.getAnalytics() == 1) permissions.add("ANALYTICS");
+	    if (p.getDocuments() == 1) permissions.add("DOCUMENTS");
+	    if (p.getSettings() == 1) permissions.add("SETTINGS");
+	    if (p.getFollow_ups() == 1) permissions.add("FOLLOW_UPS");
+	    if (p.getReports() == 1) permissions.add("REPORTS");
+	    if (p.getInvoices() == 1) permissions.add("INVOICES");
+	    if (p.getSales_clients() == 1) permissions.add("SALES_CLIENTS");
+	    if (p.getSales_leads() == 1) permissions.add("SALES_LEADS");
+	    if (p.getSales_estimation() == 1) permissions.add("SALES_ESTIMATION");
+	    if (p.getProcurement_venders() == 1) permissions.add("PROCUREMENT_VENDERS");
+	    if (p.getProcurement_quotations_recived() == 1) permissions.add("PROCUREMENT_QUOTATIONS");
+	    if (p.getProcurement_purchase_orders() == 1) permissions.add("PROCUREMENT_PURCHASE_ORDERS");
+	    if (p.getProcurement_bills_received() == 1) permissions.add("PROCUREMENT_BILLS");
+
+	    return permissions;
+	}
 }
