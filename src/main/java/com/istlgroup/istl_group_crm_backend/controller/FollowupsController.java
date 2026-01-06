@@ -14,7 +14,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/followups")
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = "${cros.allowed-origins}")
 public class FollowupsController {
     
     @Autowired

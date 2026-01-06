@@ -17,7 +17,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/proposals")
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = "${cros.allowed-origins}")
 public class ProposalsController {
     
     @Autowired
