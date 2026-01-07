@@ -39,10 +39,21 @@ public interface ProposalsRepo extends JpaRepository<ProposalsEntity, Long> {
      * Find proposals prepared by user OR where user created associated lead/customer
      * (For regular users - they see proposals they prepared)
      */
-    @Query("SELECT p FROM ProposalsEntity p WHERE " +
-           "p.deletedAt IS NULL AND " +
-           "p.preparedBy = :userId")
-    Page<ProposalsEntity> findByPreparedByAndDeletedAtIsNull(@Param("userId") Long userId, Pageable pageable);
+    @Query("""
+    	    SELECT p FROM ProposalsEntity p
+    	    WHERE p.deletedAt IS NULL
+    	      AND p.leadId IN (
+    	          SELECT l.id
+    	          FROM LeadsEntity l
+    	          WHERE l.deletedAt IS NULL
+    	            AND (l.createdBy = :userId OR l.assignedTo = :userId)
+    	      )
+    	""")
+    	Page<ProposalsEntity> findProposalsForUserLeadsWithoutGroup(
+    	    @Param("userId") Long userId,
+    	    Pageable pageable
+    	);
+
     
     /**
      * Find by group name with pagination
@@ -55,15 +66,23 @@ public interface ProposalsRepo extends JpaRepository<ProposalsEntity, Long> {
     /**
      * Find by group and prepared by
      */
-    @Query("SELECT p FROM ProposalsEntity p WHERE " +
-           "p.deletedAt IS NULL AND " +
-           "p.groupName = :groupName AND " +
-           "p.preparedBy = :userId")
-    Page<ProposalsEntity> findByGroupNameAndPreparedByAndDeletedAtIsNull(
-        @Param("groupName") String groupName,
-        @Param("userId") Long userId,
-        Pageable pageable
-    );
+    @Query("""
+    	    SELECT p FROM ProposalsEntity p
+    	    WHERE p.deletedAt IS NULL
+    	      AND p.groupName = :groupName
+    	      AND p.leadId IN (
+    	          SELECT l.id
+    	          FROM LeadsEntity l
+    	          WHERE l.deletedAt IS NULL
+    	            AND (l.createdBy = :userId OR l.assignedTo = :userId)
+    	      )
+    	""")
+    	Page<ProposalsEntity> findProposalsForUserLeads(
+    	    @Param("groupName") String groupName,
+    	    @Param("userId") Long userId,
+    	    Pageable pageable
+    	);
+
     
     /**
      * Search proposals for ADMIN/SUPERADMIN with pagination
@@ -130,4 +149,16 @@ public interface ProposalsRepo extends JpaRepository<ProposalsEntity, Long> {
      * Find proposals by customer ID
      */
     List<ProposalsEntity> findByCustomerIdAndDeletedAtIsNull(Long customerId);
+    
+    /**
+     *to check edit permission
+     */
+    
+    @Query("""
+            SELECT COUNT(p) > 0
+            FROM PagePermissionsEntity p
+            WHERE p.user_id = :userId
+              AND p.proposals_edit = 1
+        """)
+        boolean hasProposalEditPermission(@Param("userId") Long userId);
 }
