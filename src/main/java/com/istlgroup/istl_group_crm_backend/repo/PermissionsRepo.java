@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.istlgroup.istl_group_crm_backend.entity.PermissionsEntity;
+import com.istlgroup.istl_group_crm_backend.wrapperClasses.GetRolesWrapper;
 
 @Repository
 public interface PermissionsRepo extends JpaRepository<PermissionsEntity,Integer>{
@@ -21,5 +22,10 @@ public interface PermissionsRepo extends JpaRepository<PermissionsEntity,Integer
         WHERE r.id = :roleId
         """, nativeQuery = true)
     List<PermissionsEntity> findPermissionsByRoleId(@Param("roleId") Long userId);
+    @Query(value = "SELECT id AS id, name AS name FROM permissions ORDER BY id ASC", nativeQuery = true)
+	List<GetRolesWrapper> getAllPermissionsWithIds();
+    
+    @Query(value = "SELECT count(name) FROM permissions", nativeQuery = true)
+	Integer findPermission(PermissionsEntity newPermissions);
 
 }

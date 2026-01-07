@@ -2,8 +2,6 @@ package com.istlgroup.istl_group_crm_backend.entity;
 
 
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
@@ -17,7 +15,6 @@ public class RolePermissionsEntity {
 
     @Id
     private Integer role_id;
-
     @Id
     private Integer permission_id;
 }
