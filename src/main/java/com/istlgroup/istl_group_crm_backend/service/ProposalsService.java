@@ -56,9 +56,9 @@ public class ProposalsService {
         } else {
             // Regular users see only proposals they prepared
             if (groupName != null && !groupName.isEmpty() && !"All".equals(groupName)) {
-                proposalPage = proposalsRepo.findByGroupNameAndPreparedByAndDeletedAtIsNull(groupName, userId, pageable);
+                proposalPage = proposalsRepo.findProposalsForUserLeads(groupName, userId, pageable);
             } else {
-                proposalPage = proposalsRepo.findByPreparedByAndDeletedAtIsNull(userId, pageable);
+                proposalPage = proposalsRepo.findProposalsForUserLeadsWithoutGroup(userId, pageable);
             }
         }
         
@@ -340,13 +340,38 @@ public class ProposalsService {
     /**
      * Check if user can edit proposal
      */
-    private boolean canEditProposal(ProposalsEntity proposal, Long userId, String userRole) {
-        if ("SUPERADMIN".equalsIgnoreCase(userRole) || "ADMIN".equalsIgnoreCase(userRole)) {
+//    private boolean canEditProposal(ProposalsEntity proposal, Long userId, String userRole) {
+//        if ("SUPERADMIN".equalsIgnoreCase(userRole) || "ADMIN".equalsIgnoreCase(userRole)) {
+//            return true;
+//        }
+//        return proposal.getPreparedBy().equals(userId);
+//    }
+    private boolean canEditProposal(
+            ProposalsEntity proposal,
+            Long userId,
+            String userRole
+    ) {
+
+        // 1️⃣ SUPERADMIN → always allowed
+        if ("SUPERADMIN".equalsIgnoreCase(userRole)) {
             return true;
         }
-        return proposal.getPreparedBy().equals(userId);
+
+        // 2️⃣ Check permission (ADMINs included)
+        boolean hasEditPermission =
+        		proposalsRepo.hasProposalEditPermission(userId);
+//        System.err.println(hasEditPermission);
+        if (!hasEditPermission) {
+            return false;
+        }
+        else 
+        	{
+        	return true;
+        	}
+
+        
     }
-    
+
     /**
      * Check if user can delete proposal
      */

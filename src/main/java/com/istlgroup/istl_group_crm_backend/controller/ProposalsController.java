@@ -55,7 +55,7 @@ public class ProposalsController {
         } catch (Exception e) {
             response.put("success", false);
             response.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
+            return ResponseEntity.ok(response);
         }
     }
     
@@ -89,7 +89,7 @@ public class ProposalsController {
         } catch (Exception e) {
             response.put("success", false);
             response.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
+            return ResponseEntity.ok(response);
         }
     }
     
@@ -111,7 +111,7 @@ public class ProposalsController {
         } catch (CustomException e) {
             response.put("success", false);
             response.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
+            return ResponseEntity.ok(response);
         }
     }
     
@@ -134,7 +134,7 @@ public class ProposalsController {
         } catch (CustomException e) {
             response.put("success", false);
             response.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
+            return ResponseEntity.ok(response);
         }
     }
     
@@ -155,10 +155,14 @@ public class ProposalsController {
             response.put("data", proposal);
             response.put("message", "Proposal updated successfully");
             return ResponseEntity.ok(response);
-        } catch (CustomException e) {
+        }catch (CustomException e) {
             response.put("success", false);
-            response.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
+            response.put("message", e.getMessage()); // ✅ only business message
+            return ResponseEntity.ok(response);     // ✅ still 200
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", "Failed to load data");
+            return ResponseEntity.ok(response);
         }
     }
     
@@ -180,7 +184,7 @@ public class ProposalsController {
         } catch (CustomException e) {
             response.put("success", false);
             response.put("message", e.getMessage());
-            return ResponseEntity.badRequest().body(response);
+            return ResponseEntity.ok(response);
         }
     }
     
