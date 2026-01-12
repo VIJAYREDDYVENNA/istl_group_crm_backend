@@ -22,7 +22,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/purchase-orders")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "${cros.allowed-origins}")
+//@CrossOrigin(origins = "${cros.allowed-origins}")
 @Slf4j
 public class PurchaseOrderController {
     

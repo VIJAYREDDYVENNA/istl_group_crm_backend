@@ -1,9 +1,7 @@
-// DropdownProjectEntity.java
 package com.istlgroup.istl_group_crm_backend.entity;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -23,6 +21,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -88,9 +87,14 @@ public class DropdownProjectEntity {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
     
+    @Column(name = "created_by")
+    private Long createdBy;
+    
+    @Column(name = "assigned_to")
+    private Long assignedTo;
+    
     public enum ProjectStatus {
         PLANNING, IN_PROGRESS, COMPLETED, ON_HOLD, CANCELLED
     }
-
-	
+    
 }

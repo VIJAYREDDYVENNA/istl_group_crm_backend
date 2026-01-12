@@ -17,7 +17,7 @@ import com.istlgroup.istl_group_crm_backend.service.LeadsService;
 
 @RestController
 @RequestMapping("/leads")
-@CrossOrigin(origins = "${cros.allowed-origins}")
+//@CrossOrigin(origins = "${cros.allowed-origins}")
 public class LeadsController {
 
     @Autowired

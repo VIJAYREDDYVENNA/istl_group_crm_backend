@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/filters")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "${cros.allowed-origins}")
+//@CrossOrigin(origins = "${cros.allowed-origins}")
 public class DropdownFilterController {
     
     private final DropdownFilterService filterService;

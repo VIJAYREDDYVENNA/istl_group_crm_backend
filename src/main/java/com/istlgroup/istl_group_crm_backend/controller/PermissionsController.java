@@ -18,7 +18,7 @@ import com.istlgroup.istl_group_crm_backend.wrapperClasses.GetRolesWrapper;
 
 @RestController
 @RequestMapping("/permissions")
-@CrossOrigin(origins = "${cros.allowed-origins}")
+//@CrossOrigin(origins = "${cros.allowed-origins}")
 public class PermissionsController {
 
 	@Autowired

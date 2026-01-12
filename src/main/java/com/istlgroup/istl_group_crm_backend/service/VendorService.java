@@ -1,6 +1,8 @@
 package com.istlgroup.istl_group_crm_backend.service;
 
+import com.istlgroup.istl_group_crm_backend.entity.QuotationEntity;
 import com.istlgroup.istl_group_crm_backend.entity.VendorEntity;
+import com.istlgroup.istl_group_crm_backend.repo.QuotationRepository;
 import com.istlgroup.istl_group_crm_backend.repo.VendorRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,10 +23,10 @@ import java.util.List;
 public class VendorService {
     
     private final VendorRepository vendorRepository;
+    private final QuotationRepository quotationRepository;
     
     /**
-     * Get vendors with role-based and project-based filtering
-     * IMPORTANT: Only returns vendors we've placed POs with (totalOrders > 0)
+     * Get vendors with role-based and project-based filtering + category + status
      */
     @Transactional(readOnly = true)
     public Page<VendorEntity> getVendors(
@@ -51,6 +53,10 @@ public class VendorService {
         
         boolean isAdmin = isAdmin(userRole);
         
+        // Normalize filters
+        String categoryFilter = (category != null && !category.equals("all")) ? category : null;
+        String statusFilter = (status != null && !status.equals("all")) ? status : null;
+        
         // Search takes priority
         if (searchTerm != null && !searchTerm.trim().isEmpty()) {
             if (isAdmin) {
@@ -60,19 +66,20 @@ public class VendorService {
             }
         }
         
-        // Project-based filtering
+        // Project-based filtering with additional filters
         if (isAdmin) {
             if (projectId != null && !projectId.isEmpty()) {
-                return vendorRepository.findByProjectId(projectId, pageable);
+                return vendorRepository.findByProjectIdAndFilters(projectId, categoryFilter, statusFilter, pageable);
             }
             if (subGroupName != null && !subGroupName.isEmpty()) {
-                return vendorRepository.findByGroupAndSubGroup(groupName, subGroupName, pageable);
+                return vendorRepository.findByGroupSubGroupAndFilters(groupName, subGroupName, categoryFilter, statusFilter, pageable);
             }
             if (groupName != null && !groupName.isEmpty()) {
-                return vendorRepository.findByGroupName(groupName, pageable);
+                return vendorRepository.findByGroupNameAndFilters(groupName, categoryFilter, statusFilter, pageable);
             }
-            return vendorRepository.findAllActiveVendors(pageable);
+            return vendorRepository.findByFilters(categoryFilter, statusFilter, pageable);
         } else {
+            // User access - apply project filters
             if (projectId != null && !projectId.isEmpty()) {
                 return vendorRepository.findByProjectIdAndUserAccess(projectId, userId, pageable);
             }
@@ -96,10 +103,52 @@ public class VendorService {
     }
     
     /**
-     * Create new vendor manually (not recommended - should come from PO)
+     * Create vendor from quotation
+     */
+    @Transactional
+    public Long createVendorFromQuotation(QuotationEntity quotation, Long userId) {
+        String vendorName = quotation.getVendorContact() != null 
+            ? "Vendor-" + quotation.getVendorContact().substring(0, Math.min(10, quotation.getVendorContact().length()))
+            : "Auto-Vendor-" + System.currentTimeMillis();
+        
+        // Handle null project_id
+        String projectId = quotation.getProjectId();
+        if (projectId == null || projectId.trim().isEmpty()) {
+            projectId = "DEFAULT";
+        }
+        
+        VendorEntity vendor = VendorEntity.builder()
+                .vendorCode(generateVendorCode())
+                .name(vendorName)
+                .email("vendor_" + System.currentTimeMillis() + "@temp.com")
+                .phone(quotation.getVendorContact())
+                .rating(quotation.getVendorRating() != null ? quotation.getVendorRating().intValue() : 0)
+                .status("Active")
+                .groupName(quotation.getGroupName() != null ? quotation.getGroupName() : "Others")
+                .subGroupName(quotation.getSubGroupName() != null ? quotation.getSubGroupName() : "General")
+                .projectId(projectId)
+                .category(quotation.getCategory() != null ? quotation.getCategory() : "General")
+                .totalOrders(0)
+                .totalPurchaseValue(BigDecimal.ZERO)
+                .createdBy(userId)
+                .build();
+        
+        VendorEntity savedVendor = vendorRepository.save(vendor);
+        log.info("Created new vendor {} with ID: {}", vendorName, savedVendor.getId());
+        
+        return savedVendor.getId();
+    }
+    
+    /**
+     * Create new vendor manually
      */
     @Transactional
     public VendorEntity createVendor(VendorEntity vendor, Long userId) {
+        // Validate project_id
+        if (vendor.getProjectId() == null || vendor.getProjectId().trim().isEmpty()) {
+            vendor.setProjectId("DEFAULT");
+        }
+        
         // Generate vendor code if not provided
         if (vendor.getVendorCode() == null || vendor.getVendorCode().isEmpty()) {
             vendor.setVendorCode(generateVendorCode());
@@ -115,6 +164,8 @@ public class VendorService {
         if (vendor.getLastPurchaseAmount() == null) vendor.setLastPurchaseAmount(BigDecimal.ZERO);
         
         if (vendor.getStatus() == null) vendor.setStatus("Active");
+        if (vendor.getGroupName() == null) vendor.setGroupName("Others");
+        if (vendor.getSubGroupName() == null) vendor.setSubGroupName("General");
         
         VendorEntity savedVendor = vendorRepository.save(vendor);
         log.info("Created vendor: {} by user: {}", vendor.getName(), userId);
@@ -154,14 +205,6 @@ public class VendorService {
         existing.setNotes(updatedVendor.getNotes());
         existing.setAssignedTo(updatedVendor.getAssignedTo());
         
-        // Update financial info (only if provided - usually auto-updated)
-        if (updatedVendor.getLastPurchaseAmount() != null) {
-            existing.setLastPurchaseAmount(updatedVendor.getLastPurchaseAmount());
-        }
-        if (updatedVendor.getTotalPurchaseValue() != null) {
-            existing.setTotalPurchaseValue(updatedVendor.getTotalPurchaseValue());
-        }
-        
         existing.setUpdatedAt(LocalDateTime.now());
         
         return vendorRepository.save(existing);
@@ -197,48 +240,38 @@ public class VendorService {
     }
     
     /**
-     * Get vendor statistics with project filtering
+     * Get vendor statistics with project filtering - FIXED FOR KPI CARDS
      */
     @Transactional(readOnly = true)
     public VendorStats getStatistics(String groupName, String subGroupName, String projectId, Long userId, String userRole) {
-        boolean isAdmin = isAdmin(userRole);
+        // Normalize parameters
+        String groupFilter = (groupName != null && !groupName.isEmpty()) ? groupName : null;
+        String subGroupFilter = (subGroupName != null && !subGroupName.isEmpty()) ? subGroupName : null;
+        String projectFilter = (projectId != null && !projectId.isEmpty()) ? projectId : null;
         
-        // Get filtered vendors based on project and role
-        Page<VendorEntity> allVendors = getVendors(
-                groupName, subGroupName, projectId, null, null, null, null, null,
-                userId, userRole, 0, Integer.MAX_VALUE, "name", "ASC"
-        );
+        // Get stats using repository queries
+        long totalVendors = vendorRepository.countByFilters(groupFilter, subGroupFilter, projectFilter);
+        long activeVendors = vendorRepository.countActiveByFilters(groupFilter, subGroupFilter, projectFilter);
+        Double avgRating = vendorRepository.getAverageRatingByFilters(groupFilter, subGroupFilter, projectFilter);
+        Double totalPurchaseValue = vendorRepository.getTotalPurchaseValueByFilters(groupFilter, subGroupFilter, projectFilter);
+        long pendingQuotations = vendorRepository.countPendingQuotationsByFilters(groupFilter, subGroupFilter, projectFilter);
         
-        List<VendorEntity> vendors = allVendors.getContent();
-        
-        // Calculate stats from filtered vendors
-        long total = vendors.size();
-        long active = vendors.stream().filter(v -> "Active".equals(v.getStatus())).count();
-        long inactive = vendors.stream().filter(v -> "Inactive".equals(v.getStatus())).count();
-        
-        Double avgRating = vendors.stream()
-                .map(VendorEntity::getRating)
-                .filter(r -> r != null && r > 0)
-                .mapToDouble(Integer::doubleValue)
-                .average()
-                .orElse(0.0);
-        
-        BigDecimal totalPurchaseValue = vendors.stream()
-                .map(VendorEntity::getTotalPurchaseValue)
-                .filter(v -> v != null)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        long inactiveVendors = totalVendors - activeVendors;
         
         return VendorStats.builder()
-                .totalVendors(total)
-                .activeVendors(active)
-                .inactiveVendors(inactive)
-                .averageRating(avgRating)
-                .totalPurchaseValue(totalPurchaseValue)
+                .totalVendors(totalVendors)
+                .activeVendors(activeVendors)
+                .inactiveVendors(inactiveVendors)
+                .averageRating(avgRating != null ? avgRating : 0.0)
+                .totalPurchaseValue(totalPurchaseValue != null ? BigDecimal.valueOf(totalPurchaseValue) : BigDecimal.ZERO)
+                .pendingQuotations(pendingQuotations)
+                .lastUpdated(LocalDateTime.now())
                 .build();
     }
     
     /**
-     * Update vendor purchase stats (called by PurchaseOrderService)
+     * Update vendor purchase stats when PO is delivered
+     * Called by PurchaseOrderService
      */
     @Transactional
     public void updateVendorPurchaseStats(
@@ -260,7 +293,8 @@ public class VendorService {
         vendor.setTotalOrders(currentOrders + 1);
         
         vendorRepository.save(vendor);
-        log.info("Updated purchase stats for vendor: {}", vendor.getName());
+        log.info("Updated purchase stats for vendor: {} - Total: {}, Orders: {}", 
+            vendor.getName(), vendor.getTotalPurchaseValue(), vendor.getTotalOrders());
     }
     
     // Helper methods
@@ -283,6 +317,7 @@ public class VendorService {
         private long inactiveVendors;
         private Double averageRating;
         private BigDecimal totalPurchaseValue;
-        private long pendingQuotations; // Can be added if needed
+        private long pendingQuotations;
+        private LocalDateTime lastUpdated;
     }
 }

@@ -241,6 +241,12 @@ public class PurchaseOrderService {
                 ? "Vendor-" + quotation.getVendorContact().substring(0, Math.min(10, quotation.getVendorContact().length()))
                 : "Auto-Vendor-" + System.currentTimeMillis();
             
+            // Handle null project_id - use a default value
+            String projectId = quotation.getProjectId();
+            if (projectId == null || projectId.trim().isEmpty()) {
+                projectId = "DEFAULT";  // Use default project ID if not set
+            }
+            
             VendorEntity vendor = VendorEntity.builder()
                     // Don't set ID - let database auto-generate it
                     .name(vendorName)
@@ -248,10 +254,10 @@ public class PurchaseOrderService {
                     .phone(quotation.getVendorContact())
                     .rating(quotation.getVendorRating() != null ? quotation.getVendorRating().intValue() : 0)
                     .status("Active")
-                    .groupName(quotation.getGroupName())
-                    .subGroupName(quotation.getSubGroupName())
-                    .projectId(quotation.getProjectId())
-                    .category(quotation.getCategory())
+                    .groupName(quotation.getGroupName() != null ? quotation.getGroupName() : "Others")
+                    .subGroupName(quotation.getSubGroupName() != null ? quotation.getSubGroupName() : "General")
+                    .projectId(projectId)  // Now guaranteed non-null
+                    .category(quotation.getCategory() != null ? quotation.getCategory() : "General")
                     .totalOrders(0)
                     .totalPurchaseValue(BigDecimal.ZERO)
                     .createdBy(userId)
@@ -281,6 +287,12 @@ public class PurchaseOrderService {
                 ? "Vendor-" + quotation.getVendorContact()
                 : "Auto-Vendor-" + System.currentTimeMillis();
             
+            // Handle null project_id
+            String projectId = quotation.getProjectId();
+            if (projectId == null || projectId.trim().isEmpty()) {
+                projectId = "DEFAULT";
+            }
+            
             VendorEntity vendor = VendorEntity.builder()
                     // Don't set ID - let database auto-generate
                     .name(vendorName)
@@ -288,10 +300,10 @@ public class PurchaseOrderService {
                     .phone(quotation.getVendorContact())
                     .rating(quotation.getVendorRating() != null ? quotation.getVendorRating().intValue() : 0)
                     .status("Active")
-                    .groupName(quotation.getGroupName())
-                    .subGroupName(quotation.getSubGroupName())
-                    .projectId(quotation.getProjectId())
-                    .category(quotation.getCategory())
+                    .groupName(quotation.getGroupName() != null ? quotation.getGroupName() : "Others")
+                    .subGroupName(quotation.getSubGroupName() != null ? quotation.getSubGroupName() : "General")
+                    .projectId(projectId)  // Now guaranteed non-null
+                    .category(quotation.getCategory() != null ? quotation.getCategory() : "General")
                     .totalOrders(0)
                     .totalPurchaseValue(BigDecimal.ZERO)
                     .createdBy(userId)
