@@ -16,6 +16,9 @@ public interface LoginRepo extends JpaRepository<LoginEntity,Long> {
 	
 	@Query("SELECT u.name FROM LoginEntity u WHERE u.id = :id")
     public Optional<String> findRoleByUserId(@Param("id") Long id);
+	
+	@Query("SELECT u.phone FROM LoginEntity u WHERE u.id = :id")
+    public String findPhone(@Param("id") Long id);
 
 	@Query("SELECT u FROM LoginEntity u WHERE u.created_by = :userId")
 	public List<LoginEntity> getAllUsers(@Param("userId") Long userId);

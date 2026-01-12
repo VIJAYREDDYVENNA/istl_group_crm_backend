@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -61,15 +62,17 @@ public class LoginService {
 		
 		Long byId = response.getCreated_by();
 
-		String Name = loginRepo.findRoleByUserId(byId)
-		        .orElseGet(() -> {
-		            if ("SUPERADMIN".equals(response.getRole().toUpperCase())) {
-		                return "SUPERADMIN";
-		            }
+		String Name = loginRepo.findRoleByUserId(byId).orElseGet(() -> {if ("SUPERADMIN".equals(response.getRole().toUpperCase())) {return "SUPERADMIN";}
 		            throw new RuntimeException("User not found");
 		        });
 
-		
+		String phone=loginRepo.findPhone(byId);
+	    String maskedPhone ="";
+		if (phone != null && phone.length() == 10) {
+		     maskedPhone = phone.substring(0, 3) + "XXXX" + phone.substring(7);
+		   
+		}
+
 		LoginCredentialsWrapper wrappedData=new LoginCredentialsWrapper();
 		wrappedData.setId(response.getId());
 		wrappedData.setName(response.getName());
@@ -85,10 +88,14 @@ public class LoginService {
 		loginRepo.save(response);
 		
 		MenuPermissionsEntity permissions=menu_permissions.findByUsersId(response.getId());
+		
 		List<String> permissionsMenu = new ArrayList<>();
 
 		if (permissions == null) {
-			 throw new CustomException("No menu permissions assigned. Please contact " + Name);
+		    throw new CustomException("No menu permissions assigned. Please contact " + Name +" "+maskedPhone);
+		}
+		if (!hasAnyMenuPermission(permissions)) {
+		    throw new CustomException("No menu permissions assigned. Please contact " + Name +" "+maskedPhone);
 		} else {
 		    permissionsMenu = extractPermissions(permissions);
 		}
@@ -109,6 +116,28 @@ public class LoginService {
 		return ResponseEntity.status(HttpStatus.OK).body(loginResponseWrapper);
 	}
 
+	private boolean hasAnyMenuPermission(MenuPermissionsEntity permissions) {
+	    return Stream.of(
+	            permissions.getDashboard(),
+	            permissions.getAnalytics(),
+	            permissions.getDocuments(),
+	            permissions.getSettings(),
+	            permissions.getFollow_ups(),
+	            permissions.getReports(),
+	            permissions.getInvoices(),
+	            permissions.getSales_clients(),
+	            permissions.getSales_leads(),
+	            permissions.getSales_estimation(),
+	            permissions.getProcurement_venders(),
+	            permissions.getProcurement_quotations_recived(),
+	            permissions.getProcurement_purchase_orders(),
+	            permissions.getProcurement_bills_received(),
+	            permissions.getOffice_use()
+	    ).anyMatch(value -> value != null && value == 1);
+	}
+
+	
+	
 	private List<String> extractPermissions(MenuPermissionsEntity p) {
 
 	    List<String> permissions = new ArrayList<>();
