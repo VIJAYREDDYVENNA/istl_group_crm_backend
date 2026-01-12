@@ -22,15 +22,24 @@ public class DropdownProjectService {
     private final DropdownSubGroupRepository subGroupRepository;
     
     @Transactional
-    public DropdownProjectEntity createProject(DropdownProjectEntity project, Long subGroupId) {
+    public DropdownProjectEntity createProject(DropdownProjectEntity project, Long subGroupId, Long userId) {
         DropdownSubGroupEntity subGroup = subGroupRepository.findById(subGroupId)
             .orElseThrow(() -> new RuntimeException("SubGroup not found with id: " + subGroupId));
         
         project.setSubGroup(subGroup);
         
+        // Set group_id and sub_group_name from the subGroup entity
+        project.setGroup_id(subGroup.getGroup().getGroupName());
+        project.setSubGroupName(subGroup.getSubGroupName());
+        
+        // Set created_by
+        project.setCreatedBy(userId);
+        
         // Generate unique project ID if not provided
         if (project.getProjectUniqueId() == null || project.getProjectUniqueId().isEmpty()) {
-            generateProjectCode();
+            String generatedCode = generateProjectCode();
+            project.setProjectUniqueId(generatedCode);
+            System.err.println("Generated project code: " + generatedCode);
         }
         
         return projectRepository.save(project);
@@ -93,6 +102,7 @@ public class DropdownProjectService {
         
         return prefix + String.format("%03d", nextNumber);
     }
+    
     private String generateProjectCode() {
         String year = String.valueOf(LocalDateTime.now().getYear());
         
@@ -104,27 +114,27 @@ public class DropdownProjectService {
         return String.format("PROJ-%s-%04d", year, nextSequence);
     }
     
-    public DropdownProjectEntity createProjectFromLead( LeadsEntity Lead) {
-		// TODO Auto-generated method stub
-		DropdownProjectEntity projectEntity = new DropdownProjectEntity();
-		projectEntity.setLead_id(Lead.getLeadCode());
-		projectEntity.setGroup_id(Lead.getGroupName());
-		projectEntity.setSubGroupName(Lead.getSubGroupName());
-		projectEntity.setProjectName(Lead.getName());
-		projectEntity.setDescription(Lead.getEnquiry());
-		projectEntity.setCreatedAt(Lead.getCreatedAt());
-		DropdownSubGroupEntity subGroup =
-	            subGroupRepository.findBysubGroupName(Lead.getSubGroupName())
-	            .orElseThrow(() -> new RuntimeException("Sub group not found"));
+    public DropdownProjectEntity createProjectFromLead(LeadsEntity Lead) {
+        // TODO Auto-generated method stub
+        DropdownProjectEntity projectEntity = new DropdownProjectEntity();
+        projectEntity.setLead_id(Lead.getLeadCode());
+        projectEntity.setGroup_id(Lead.getGroupName());
+        projectEntity.setSubGroupName(Lead.getSubGroupName());
+        projectEntity.setProjectName(Lead.getName());
+        projectEntity.setDescription(Lead.getEnquiry());
+        projectEntity.setCreatedAt(Lead.getCreatedAt());
+        DropdownSubGroupEntity subGroup =
+                subGroupRepository.findBysubGroupName(Lead.getSubGroupName())
+                .orElseThrow(() -> new RuntimeException("Sub group not found"));
 
-	    // ✅ set relation (FK)
-		projectEntity.setSubGroup(subGroup);
+        // ✅ set relation (FK)
+        projectEntity.setSubGroup(subGroup);
 
-		 if (projectEntity.getProjectUniqueId() == null || projectEntity.getProjectUniqueId().isEmpty()) {
-			 projectEntity.setProjectUniqueId(generateProjectCode());
-	        }
-		 DropdownProjectEntity ent = projectRepository.save(projectEntity);
-		return  ent;
-	}
+        if (projectEntity.getProjectUniqueId() == null || projectEntity.getProjectUniqueId().isEmpty()) {
+            projectEntity.setProjectUniqueId(generateProjectCode());
+        }
+        DropdownProjectEntity ent = projectRepository.save(projectEntity);
+        return  ent;
+    }
     
 }

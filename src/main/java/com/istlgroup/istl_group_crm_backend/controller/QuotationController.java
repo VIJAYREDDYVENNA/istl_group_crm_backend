@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/quotations")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "${cros.allowed-origins}")
+//@CrossOrigin(origins = "${cros.allowed-origins}")
 @Slf4j
 public class QuotationController {
     

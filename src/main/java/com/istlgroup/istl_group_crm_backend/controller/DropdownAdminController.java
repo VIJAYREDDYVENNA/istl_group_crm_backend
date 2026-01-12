@@ -16,7 +16,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin/dropdowns")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "${cros.allowed-origins}")
+//@CrossOrigin(origins = "${cros.allowed-origins}")
 public class DropdownAdminController {
     
     private final DropdownAdminService adminService;
@@ -100,9 +100,10 @@ public class DropdownAdminController {
     @PostMapping("/projects")
     public ResponseEntity<DropdownProjectEntity> createProject(
             @RequestBody DropdownProjectEntity project,
-            @RequestParam Long subGroupId) {
+            @RequestParam Long subGroupId,
+            @RequestParam Long userId) {  // ✅ Added userId parameter
         return ResponseEntity.status(HttpStatus.CREATED)
-            .body(projectService.createProject(project, subGroupId));
+            .body(projectService.createProject(project, subGroupId, userId));  // ✅ Now passing 3 params
     }
     
     @PutMapping("/projects/{projectUniqueId}")

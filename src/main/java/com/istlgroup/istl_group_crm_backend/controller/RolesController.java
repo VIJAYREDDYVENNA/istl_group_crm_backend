@@ -17,7 +17,7 @@ import com.istlgroup.istl_group_crm_backend.wrapperClasses.GetRolesWrapper;
 
 @RestController
 @RequestMapping("/roles")
-@CrossOrigin(origins = "${cros.allowed-origins}")
+//@CrossOrigin(origins = "${cros.allowed-origins}")
 public class RolesController {
 
 	@Autowired

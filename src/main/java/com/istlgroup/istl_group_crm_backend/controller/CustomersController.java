@@ -16,7 +16,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/customers")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "${cros.allowed-origins}")
+//@CrossOrigin(origins = "${cros.allowed-origins}")
 public class CustomersController {
     
     private final CustomersService customersService;

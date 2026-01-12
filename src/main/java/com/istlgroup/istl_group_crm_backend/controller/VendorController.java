@@ -16,7 +16,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/vendors")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "${cros.allowed-origins}")
+//@CrossOrigin(origins = "${cros.allowed-origins}")
 @Slf4j
 public class VendorController {
     
@@ -40,11 +40,13 @@ public class VendorController {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "name") String sortBy,
             @RequestParam(defaultValue = "ASC") String sortDirection,
+            @RequestHeader("x-user-id") Long userId,
+            @RequestHeader("x-user-role") String userRole,
             HttpServletRequest request
     ) {
         try {
-            Long userId = getUserIdFromRequest(request);
-            String userRole = getUserRoleFromRequest(request);
+//            Long userId = getUserIdFromRequest(request);
+//            String userRole = getUserRoleFromRequest(request);
             
             Page<VendorEntity> vendors = vendorService.getVendors(
                     groupName, subGroupName, projectId, category, vendorType,

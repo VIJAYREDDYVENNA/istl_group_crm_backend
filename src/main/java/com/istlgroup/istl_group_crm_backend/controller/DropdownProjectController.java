@@ -1,6 +1,5 @@
 package com.istlgroup.istl_group_crm_backend.controller;
 
-
 import com.istlgroup.istl_group_crm_backend.entity.DropdownProjectEntity;
 import com.istlgroup.istl_group_crm_backend.service.DropdownFilterService;
 import com.istlgroup.istl_group_crm_backend.service.DropdownProjectService;
@@ -12,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/projects")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "${cros.allowed-origins}")
+//@CrossOrigin(origins = "${cros.allowed-origins}")
 public class DropdownProjectController {
     
     private final DropdownProjectService projectService;
@@ -26,9 +25,10 @@ public class DropdownProjectController {
     @PostMapping
     public ResponseEntity<DropdownProjectEntity> createProject(
             @RequestBody DropdownProjectEntity project,
-            @RequestParam Long subGroupId) {
+            @RequestParam Long subGroupId,
+            @RequestParam Long userId) {
         return ResponseEntity.status(HttpStatus.CREATED)
-            .body(projectService.createProject(project, subGroupId));
+            .body(projectService.createProject(project, subGroupId, userId));
     }
     
     @PutMapping("/{projectUniqueId}")
