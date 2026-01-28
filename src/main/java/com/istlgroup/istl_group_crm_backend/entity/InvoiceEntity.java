@@ -47,6 +47,15 @@ public class InvoiceEntity {
     @Column(name = "sub_group_id", length = 225)
     private String subGroupId;
 
+    // NEW: Link to order book
+    @Column(name = "order_book_id")
+    private Long orderBookId;
+    
+    // NEW: Company selection (ISTL or SESOLA)
+    @Column(name = "company", length = 50)
+    private String company; // "ISTL" or "SESOLA"
+    
+    
     @Column(name = "order_id")
     private Long orderId;
 
@@ -118,5 +127,11 @@ public class InvoiceEntity {
         public static final String PARTIALLY_PAID = "Partially Paid";
         public static final String PAID = "Paid";
         public static final String CANCELLED = "Cancelled";
+    }
+    
+    // Company constants
+    public static class Company {
+        public static final String ISTL = "ISTL";
+        public static final String SESOLA = "SESOLA";
     }
 }

@@ -103,7 +103,21 @@ public class InvoiceController {
                     .body(createErrorResponse(e.getMessage()));
         }
     }
-    
+    /**
+     * GET /api/invoices/order-book-items-by-customer/{customerId}
+     * Get all order book items for a customer
+     */
+    @GetMapping("/order-book-items-by-customer/{customerId}")
+    public ResponseEntity<?> getOrderBookItemsByCustomer(@PathVariable Long customerId) {
+        try {
+            List<Map<String, Object>> items = invoiceService.getOrderBookItemsByCustomer(customerId);
+            return ResponseEntity.ok(Map.of("success", true, "data", items));
+        } catch (Exception e) {
+            log.error("Error fetching order book items for customer: {}", customerId, e);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(createErrorResponse(e.getMessage()));
+        }
+    }
     @PostMapping
     public ResponseEntity<?> createInvoice(
             @RequestBody InvoiceEntity invoice,
@@ -274,4 +288,6 @@ public class InvoiceController {
         response.put("message", message);
         return response;
     }
+    
+    
 }

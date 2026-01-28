@@ -35,6 +35,10 @@ public class LeadsService {
     
     @Autowired 
     private LeadHistoryService leadHistoryService;
+    
+    @Autowired
+    
+    private ProposalsService updatedProposal;
    
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -209,7 +213,25 @@ public LeadWrapper createLead(LeadRequestWrapper requestWrapper, Long createdBy)
     
     return convertToWrapper(savedLead);
 }
-
+/**
+ * Add proposal created history
+ */
+public void addProposalHistory(Long leadId, String proposalNo, Long createdBy) {
+    try {
+        String description = "Proposal created: " + proposalNo;
+        leadHistoryService.addHistory(
+            leadId,
+            "PROPOSAL_CREATED",
+            null,
+            null,
+            proposalNo,
+            description,
+            createdBy
+        );
+    } catch (Exception e) {
+        System.err.println("Failed to add proposal history: " + e.getMessage());
+    }
+}
     /**
      * Update an existing lead
      */
@@ -345,6 +367,11 @@ public LeadWrapper updateLead(Long leadId, LeadRequestWrapper requestWrapper, Lo
             // Update lead with customer_id
             updatedLead.setCustomerId(customer.getId());
             updatedLead = leadsRepo.save(updatedLead);
+            
+         // Update lead with customer_id
+            updatedProposal.updateCustomerId(customer.getId(),leadId);
+//            updatedProposal = leadsRepo.save(updatedLead);
+            
             String customerCode = customer.getCustomerCode();
             DropdownProjectEntity projectEntity =
                     projectService.createProjectFromLead(updatedLead, customerCode);

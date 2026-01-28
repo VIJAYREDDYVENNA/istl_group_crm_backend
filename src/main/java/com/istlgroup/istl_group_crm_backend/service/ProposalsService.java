@@ -20,7 +20,13 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 @Service
 public class ProposalsService {
     
@@ -41,29 +47,50 @@ public class ProposalsService {
     /**
      * Get all proposals with pagination
      */
-    public Page<ProposalWrapper> getAllProposalsPaginated(Long userId, String userRole,
-                                                            String groupName, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<ProposalsEntity> proposalPage;
-        
-        if ("SUPERADMIN".equalsIgnoreCase(userRole) || "ADMIN".equalsIgnoreCase(userRole)) {
-            // Admin sees all proposals
-            if (groupName != null && !groupName.isEmpty() && !"All".equals(groupName)) {
-                proposalPage = proposalsRepo.findByGroupNameAndDeletedAtIsNull(groupName, pageable);
-            } else {
-                proposalPage = proposalsRepo.findByDeletedAtIsNull(pageable);
-            }
+    /**
+ * Get all proposals with pagination and filtering by group and subgroup
+ */
+public Page<ProposalWrapper> getAllProposalsPaginated(Long userId, String userRole,
+                                                       String groupName, String subGroupName, 
+                                                       int page, int size) {
+    Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+    Page<ProposalsEntity> proposalPage;
+
+    boolean hasGroup = groupName != null && !groupName.isEmpty() && !"All".equals(groupName);
+    boolean hasSubGroup = subGroupName != null && !subGroupName.isEmpty() && !"All".equals(subGroupName);
+
+    if ("SUPERADMIN".equalsIgnoreCase(userRole) || "ADMIN".equalsIgnoreCase(userRole)) {
+        // Admin/SuperAdmin sees all proposals
+        if (hasGroup && hasSubGroup) {
+            // Filter by both group and subgroup
+            proposalPage = proposalsRepo.findByGroupNameAndSubGroupNameAndDeletedAtIsNull(
+                groupName, subGroupName, pageable
+            );
+        } else if (hasGroup) {
+            // Filter by group only
+            proposalPage = proposalsRepo.findByGroupNameAndDeletedAtIsNull(groupName, pageable);
         } else {
-            // Regular users see only proposals they prepared
-            if (groupName != null && !groupName.isEmpty() && !"All".equals(groupName)) {
-                proposalPage = proposalsRepo.findProposalsForUserLeads(groupName, userId, pageable);
-            } else {
-                proposalPage = proposalsRepo.findProposalsForUserLeadsWithoutGroup(userId, pageable);
-            }
+            // No filters - all proposals
+            proposalPage = proposalsRepo.findByDeletedAtIsNull(pageable);
         }
-        
-        return proposalPage.map(this::convertToWrapper);
+    } else {
+        // Regular users see only proposals from leads they created/are assigned to
+        if (hasGroup && hasSubGroup) {
+            // Filter by both group and subgroup
+            proposalPage = proposalsRepo.findProposalsForUserLeadsByGroupAndSubGroup(
+                groupName, subGroupName, userId, pageable
+            );
+        } else if (hasGroup) {
+            // Filter by group only
+            proposalPage = proposalsRepo.findProposalsForUserLeads(groupName, userId, pageable);
+        } else {
+            // No filters
+            proposalPage = proposalsRepo.findProposalsForUserLeadsWithoutGroup(userId, pageable);
+        }
     }
+
+    return proposalPage.map(this::convertToWrapper);
+}
     
     /**
      * Filter proposals with pagination
@@ -84,6 +111,7 @@ public class ProposalsService {
                 filterRequest.getSearchTerm(),
                 filterRequest.getFilterStatus(),
                 filterRequest.getFilterGroup(),
+                filterRequest.getFilterSubGroup(),
                 filterRequest.getFilterPreparedBy(),
                 null, // leadId
                 null, // customerId
@@ -98,6 +126,7 @@ public class ProposalsService {
                 filterRequest.getSearchTerm(),
                 filterRequest.getFilterStatus(),
                 filterRequest.getFilterGroup(),
+                filterRequest.getFilterSubGroup(),
                 null, // leadId
                 null, // customerId
                 fromDate,
@@ -185,6 +214,7 @@ public class ProposalsService {
             proposal.setLeadId(requestWrapper.getLeadId());
         }
         if (requestWrapper.getCustomerId() != null) {
+        	System.err.println(requestWrapper.getCustomerId());
             proposal.setCustomerId(requestWrapper.getCustomerId());
         }
         if (requestWrapper.getTitle() != null) {
@@ -398,5 +428,56 @@ public class ProposalsService {
                 return null;
             }
         }
+    }
+
+	public void updateCustomerId(Long Customerid,Long leadId) {
+		// TODO Auto-generated method stub
+		System.err.println(Customerid+" "+leadId);
+		int updated = proposalsRepo.updateCustomerId(Customerid,leadId);
+		if (updated == 0) {
+            throw new RuntimeException("No proposal found for leadId: " + leadId);
+        }
+	}
+	
+	public List<Map<String, Object>> getProposalsByCustomerForDropdown(
+            Long customerId, 
+            Long userId, 
+            String userRole) {
+        
+        // Get proposals for this customer using the customerId field
+        List<ProposalsEntity> proposals = proposalsRepo.findByCustomerIdAndDeletedAtIsNull(customerId);
+        
+        // For non-admin users, filter to only proposals they can see
+        if (!"ADMIN".equals(userRole) && !"SUPERADMIN".equals(userRole)) {
+            proposals = proposals.stream()
+                .filter(p -> {
+                    // Check if user has access to this proposal's lead
+                    if (p.getLeadId() != null) {
+                        Optional<LeadsEntity> leadOpt = leadsRepo.findById(p.getLeadId());
+                        if (leadOpt.isPresent()) {
+                            LeadsEntity lead = leadOpt.get();
+                            return lead.getCreatedBy().equals(userId) || 
+                                   (lead.getAssignedTo() != null && lead.getAssignedTo().equals(userId));
+                        }
+                    }
+                    return false;
+                })
+                .collect(Collectors.toList());
+        }
+        
+        // Map to simplified DTO with only required fields
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (ProposalsEntity proposal : proposals) {
+            Map<String, Object> dto = new HashMap<>();
+            dto.put("id", proposal.getId());
+            dto.put("proposalNo", proposal.getProposalNo());
+            dto.put("title", proposal.getTitle());
+            dto.put("status", proposal.getStatus());
+            dto.put("totalValue", proposal.getTotalValue());
+            dto.put("createdAt", proposal.getCreatedAt());
+            result.add(dto);
+        }
+        
+        return result;
     }
 }

@@ -207,7 +207,18 @@ public interface ProjectRepository extends JpaRepository<ProjectEntity, Long> {
            "FROM ProjectEntity p WHERE p.isActive = true")
     Optional<Object> getGlobalProcurementStats();
     
- 
+  
+   
+
+        @Query("""
+            SELECT p.customerId
+            FROM ProjectEntity p
+            WHERE p.projectUniqueId = :projectId
+        """)
+        String findCustomerIdByProjectId(@Param("projectId") String projectId);
+    
+
+
 }
    
    

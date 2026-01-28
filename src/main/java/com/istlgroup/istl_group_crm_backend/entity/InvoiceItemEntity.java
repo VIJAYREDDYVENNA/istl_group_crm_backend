@@ -25,6 +25,10 @@ public class InvoiceItemEntity {
     @JsonBackReference  // ← ADD THIS
     private InvoiceEntity invoice;
 
+ // NEW: Link to order book item
+    @Column(name = "order_book_item_id")
+    private Long orderBookItemId;
+    
     @Column(name = "order_item_id")
     private Long orderItemId;
 

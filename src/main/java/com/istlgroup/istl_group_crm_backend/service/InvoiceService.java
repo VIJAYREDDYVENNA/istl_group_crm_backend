@@ -17,14 +17,19 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.istlgroup.istl_group_crm_backend.repo.OrderBookRepo;
+import com.istlgroup.istl_group_crm_backend.repo.OrderBookItemRepo;
+import com.istlgroup.istl_group_crm_backend.entity.OrderBookEntity;
+import com.istlgroup.istl_group_crm_backend.entity.OrderBookItemEntity;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.Year;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -36,7 +41,8 @@ public class InvoiceService {
     private final CustomersRepo customerRepository;
     private final InvoicePdfService pdfService;
     private final PaymentHistoryRepository paymentHistoryRepository;
-
+    private final OrderBookRepo orderBookRepo;
+    private final OrderBookItemRepo orderBookItemRepo;
     /**
      * Get invoices with role-based and project-based filtering
      */
@@ -201,7 +207,107 @@ public class InvoiceService {
             throw new RuntimeException("Failed to create invoice: " + e.getMessage());
         }
     }
-    
+    /**
+     * Get all order book items for a customer
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getOrderBookItemsByCustomer(Long customerId) {
+        try {
+            log.info("Fetching order book items for customer: {}", customerId);
+            
+            // Find all active order books for this customer
+            List<OrderBookEntity> orderBooks = orderBookRepo.findByCustomerIdAndDeletedAtIsNull(customerId);
+            
+            if (orderBooks.isEmpty()) {
+                log.info("No order books found for customer: {}", customerId);
+                return new ArrayList<>();
+            }
+            
+            List<Map<String, Object>> allItems = new ArrayList<>();
+            
+            // Collect items from all order books
+            for (OrderBookEntity orderBook : orderBooks) {
+                List<OrderBookItemEntity> items = orderBookItemRepo
+                    .findByOrderBookIdOrderByLineNo(orderBook.getId());
+                
+                for (OrderBookItemEntity item : items) {
+                    Map<String, Object> itemMap = new HashMap<>();
+                    itemMap.put("id", item.getId());
+                    itemMap.put("orderBookId", orderBook.getId());
+                    itemMap.put("orderBookNo", orderBook.getOrderBookNo());
+                    itemMap.put("itemName", item.getItemName());
+                    itemMap.put("specification", item.getSpecification());
+                    itemMap.put("description", item.getDescription());
+                    itemMap.put("quantity", item.getQuantity());
+                    itemMap.put("unit", item.getUnit());
+                    itemMap.put("unitPrice", item.getUnitPrice());
+                    itemMap.put("taxPercent", item.getTaxPercent());
+                    itemMap.put("discountPercent", item.getDiscountPercent());
+                    
+                    allItems.add(itemMap);
+                }
+            }
+            
+            log.info("Found {} order book items for customer {}", allItems.size(), customerId);
+            return allItems;
+            
+        } catch (Exception e) {
+            log.error("Error fetching order book items for customer: {}", customerId, e);
+            throw new RuntimeException("Failed to fetch order book items: " + e.getMessage());
+        }
+    }
+    /**
+     * Get order book items by project ID for invoice item selection
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getOrderBookItemsByProject(String projectId) {
+        try {
+            // Find order books for this project (via customer)
+            CustomersEntity customer = customerRepository.findByProjectId(projectId)
+                    .orElseThrow(() -> new RuntimeException("Customer not found for project: " + projectId));
+            
+//            CustomersEntity customerEn = customerRepository.findByCustomerCode(customer);
+//            System.err.println(customerEn.getId());
+//    // Get all active order books for this customer
+//    List<OrderBookEntity> orderBooks = orderBookRepo.findByCustomerIdAndDeletedAtIsNull(customerEn.getId());
+            // Get all active order books for this customer
+            List<OrderBookEntity> orderBooks = orderBookRepo.findByCustomerIdAndDeletedAtIsNull(customer.getId());
+            
+            if (orderBooks.isEmpty()) {
+                return new ArrayList<>();
+            }
+            
+            // Collect all items from all order books
+            List<Map<String, Object>> allItems = new ArrayList<>();
+            
+            for (OrderBookEntity orderBook : orderBooks) {
+                List<OrderBookItemEntity> items = orderBookItemRepo.findByOrderBookIdWithCalculatedFields(orderBook.getId());
+                
+                for (OrderBookItemEntity item : items) {
+                    Map<String, Object> itemMap = new HashMap<>();
+                    itemMap.put("id", item.getId());
+                    itemMap.put("orderBookId", item.getOrderBookId());
+                    itemMap.put("orderBookNo", orderBook.getOrderBookNo());
+                    itemMap.put("itemName", item.getItemName());
+                    itemMap.put("specification", item.getSpecification());
+                    itemMap.put("description", item.getDescription());
+                    itemMap.put("quantity", item.getQuantity());
+                    itemMap.put("unit", item.getUnit());
+                    itemMap.put("unitPrice", item.getUnitPrice());
+                    itemMap.put("taxPercent", item.getTaxPercent());
+                    itemMap.put("discountPercent", item.getDiscountPercent());
+                    
+                    allItems.add(itemMap);
+                }
+            }
+            
+            return allItems;
+            
+        } catch (Exception e) {
+            log.error("Error fetching order book items for project: {}", projectId, e);
+            throw new RuntimeException("Failed to fetch order book items: " + e.getMessage());
+        }
+    }
     /**
      * Update invoice
      */
@@ -217,6 +323,7 @@ public class InvoiceService {
         existing.setInvoiceDate(updatedInvoice.getInvoiceDate());
         existing.setDueDate(updatedInvoice.getDueDate());
         existing.setStatus(updatedInvoice.getStatus());
+        existing.setCompany(updatedInvoice.getCompany());
         
         // Update items if provided
         if (updatedInvoice.getItems() != null) {

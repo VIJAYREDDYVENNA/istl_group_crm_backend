@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -55,7 +56,38 @@ public class CustomersController {
             return ResponseEntity.badRequest().body(response);
         }
     }
-    
+ // ADD THIS METHOD TO YOUR CustomersController.java
+
+    /**
+     * NEW: Get customers filtered by group and subgroup for Order Book dropdown
+     * Returns only id, customerCode, and name
+     * GET /customers/by-group?groupName=Solar&subGroupName=Residential
+     */
+    @GetMapping("/by-group")
+    public ResponseEntity<Map<String, Object>> getCustomersByGroup(
+            @RequestParam String groupName,
+            @RequestParam(required = false) String subGroupName,
+            @RequestHeader("User-Id") Long userId,
+            @RequestHeader("User-Role") String userRole) {
+        
+        Map<String, Object> response = new HashMap<>();
+        try {
+            // Call service method to get simplified customer list
+            List<Map<String, Object>> customers = customersService.getCustomersByGroupForDropdown(
+                userId, userRole, groupName, subGroupName
+            );
+            
+            response.put("success", true);
+            response.put("data", customers);
+            response.put("message", "Customers fetched successfully");
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", "Failed to fetch customers: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
     /**
      * Get filtered customers
      * POST /customers/filter

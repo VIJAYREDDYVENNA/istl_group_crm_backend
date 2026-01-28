@@ -13,7 +13,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -98,7 +101,55 @@ public class CustomersService {
 //            toDate
 //        );
 //    }
-    
+ // ADD THIS METHOD TO YOUR CustomersService.java
+
+    /**
+     * Get customers by group and subgroup for dropdown (returns only id, customerCode, name)
+     * Used in Order Book creation
+     */
+    public List<Map<String, Object>> getCustomersByGroupForDropdown(
+            Long userId, 
+            String userRole, 
+            String groupName, 
+            String subGroupName) {
+        
+        List<CustomersEntity> customers;
+        
+        // Determine which customers to fetch based on role
+        if ("ADMIN".equals(userRole) || "SUPERADMIN".equals(userRole)) {
+            // Admin can see all customers in the group/subgroup
+            if (subGroupName != null && !subGroupName.trim().isEmpty()) {
+                customers = (List<CustomersEntity>) customersRepo.findByGroupNameAndSubGroupNameAndDeletedAtIsNull(groupName, subGroupName);
+            } else {
+                customers = (List<CustomersEntity>) customersRepo.findByGroupName(groupName);
+            }
+        } else {
+            // Regular users see only customers they created or are assigned to
+            if (subGroupName != null && !subGroupName.trim().isEmpty()) {
+                customers = customersRepo.findByUserAndGroupNameAndSubGroupNameAndDeletedAtIsNull(
+                    userId, groupName, subGroupName, Pageable.unpaged()
+                ).getContent();
+            } else {
+                customers = customersRepo.findByUserAndGroupNameAndDeletedAtIsNull(
+                    userId, groupName, Pageable.unpaged()
+                ).getContent();
+            }
+        }
+        
+        // Map to simplified DTO with only required fields
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (CustomersEntity customer : customers) {
+            if (customer.getDeletedAt() == null) {  // Ensure not deleted
+                Map<String, Object> dto = new HashMap<>();
+                dto.put("id", customer.getId());
+                dto.put("customerCode", customer.getCustomerCode());
+                dto.put("name", customer.getName());
+                result.add(dto);
+            }
+        }
+        
+        return result;
+    }
     /**
      * Get customer by ID with role-based access control
      */
