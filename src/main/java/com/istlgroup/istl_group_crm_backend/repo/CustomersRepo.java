@@ -23,7 +23,7 @@ public interface CustomersRepo extends JpaRepository<CustomersEntity, Long> {
     /**
      * Find customer by customer code
      */
-    Optional<CustomersEntity> findByCustomerCode(String customerCode);
+    CustomersEntity findByCustomerCode(String customerCode);
     
     // ==================== NON-PAGINATED METHODS ====================
     
@@ -340,5 +340,14 @@ public interface CustomersRepo extends JpaRepository<CustomersEntity, Long> {
   * These new methods add subGroupName parameter to the search queries and 
   * include new methods for filtering by both group and sub-group.
   */
-    
+ 
+
+ /**
+  * Find customers by group name and subgroup name (non-paginated)
+  */
+
+ List<CustomersEntity> findByGroupName(String groupName);
+
+ List<CustomersEntity> findByGroupNameAndSubGroupNameAndDeletedAtIsNull(String groupName, String subGroupName);
+
 }

@@ -105,7 +105,34 @@ public class LeadsController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
-
+    /**
+     * Get leads filtered by group and subgroup (for Proposals dropdown)
+     */
+    @GetMapping("/by-group-subgroup")
+    public ResponseEntity<Map<String, Object>> getLeadsByGroupAndSubGroup(
+            @RequestHeader("User-Id") Long userId,
+            @RequestHeader("User-Role") String userRole,
+            @RequestParam(required = false) String groupName,
+            @RequestParam(required = false) String subGroupName) {
+        try {
+//            log.info("Fetching leads by group: {}, subGroup: {}", groupName, subGroupName);
+            
+            List<LeadWrapper> leads = leadsService.getAllLeads(userId, userRole, groupName, subGroupName);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", leads);
+            response.put("count", leads.size());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+//            log.error("Error fetching leads by group/subgroup", e);
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
     /**
      * Create a new lead
      */

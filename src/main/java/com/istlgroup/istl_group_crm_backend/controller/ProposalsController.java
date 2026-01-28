@@ -2,15 +2,19 @@ package com.istlgroup.istl_group_crm_backend.controller;
 
 import com.istlgroup.istl_group_crm_backend.customException.CustomException;
 import com.istlgroup.istl_group_crm_backend.service.ProposalsService;
+import com.istlgroup.istl_group_crm_backend.service.LeadHistoryService;
 import com.istlgroup.istl_group_crm_backend.service.ProposalsPDFService;
 import com.istlgroup.istl_group_crm_backend.wrapperClasses.ProposalWrapper;
 import com.istlgroup.istl_group_crm_backend.wrapperClasses.ProposalRequestWrapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
+
 
 import java.util.HashMap;
 import java.util.Map;
@@ -25,13 +29,15 @@ public class ProposalsController {
     
     @Autowired
     private ProposalsPDFService proposalsPDFService;
-    
+    @Autowired
+    private LeadHistoryService leadHistoryService;
     /**
      * Get all proposals with pagination
      */
     @GetMapping("/getAll")
     public ResponseEntity<Map<String, Object>> getAllProposals(
             @RequestParam(required = false) String groupName,
+            @RequestParam(required = false) String subGroupName,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestHeader("User-Id") Long userId,
@@ -39,8 +45,9 @@ public class ProposalsController {
         
         Map<String, Object> response = new HashMap<>();
         try {
+        	System.err.println(subGroupName);
             Page<ProposalWrapper> proposalPage = proposalsService.getAllProposalsPaginated(
-                userId, userRole, groupName, page, size
+                userId, userRole, groupName,subGroupName, page, size
             );
             
             Map<String, Object> pageData = new HashMap<>();
@@ -115,28 +122,46 @@ public class ProposalsController {
         }
     }
     
-    /**
-     * Create new proposal
-     */
-    @PostMapping("/create")
-    public ResponseEntity<Map<String, Object>> createProposal(
-            @RequestBody ProposalRequestWrapper requestWrapper,
-            @RequestHeader("User-Id") Long userId,
-            @RequestHeader("User-Role") String userRole) {
+  
+
+@PostMapping("/create")
+public ResponseEntity<Map<String, Object>> createProposal(
+        @RequestBody ProposalRequestWrapper requestWrapper,
+        @RequestHeader("User-Id") Long userId,
+        @RequestHeader("User-Role") String userRole) {
+    
+    Map<String, Object> response = new HashMap<>();
+    try {
+        ProposalWrapper proposal = proposalsService.createProposal(requestWrapper, userId);
         
-        Map<String, Object> response = new HashMap<>();
-        try {
-            ProposalWrapper proposal = proposalsService.createProposal(requestWrapper, userId);
-            response.put("success", true);
-            response.put("data", proposal);
-            response.put("message", "Proposal created successfully");
-            return ResponseEntity.ok(response);
-        } catch (CustomException e) {
-            response.put("success", false);
-            response.put("message", e.getMessage());
-            return ResponseEntity.ok(response);
+        // Add to lead history if leadId is present
+        if (requestWrapper.getLeadId() != null) {
+            try {
+                leadHistoryService.addHistory(
+                    requestWrapper.getLeadId(),
+                    "PROPOSAL_CREATED",
+                    null,
+                    null,
+                    proposal.getProposalNo(),
+                    "Proposal created: " + proposal.getProposalNo(),
+                    userId
+                );
+            } catch (Exception historyEx) {
+                // Log but don't fail the proposal creation
+                System.err.println("Failed to add proposal history: " + historyEx.getMessage());
+            }
         }
+        
+        response.put("success", true);
+        response.put("data", proposal);
+        response.put("message", "Proposal created successfully");
+        return ResponseEntity.ok(response);
+    } catch (CustomException e) {
+        response.put("success", false);
+        response.put("message", e.getMessage());
+        return ResponseEntity.ok(response);
     }
+}
     
     /**
      * Update proposal
@@ -212,4 +237,37 @@ public class ProposalsController {
             return ResponseEntity.badRequest().build();
         }
     }
+ // ADD THIS METHOD TO YOUR ProposalController.java
+
+   // ADD THIS METHOD TO YOUR ProposalController.java
+
+/**
+ * NEW: Get proposals filtered by customer ID
+ * Returns proposals for a specific customer
+ * GET /proposals/by-customer/{customerId}
+ */
+@GetMapping("/by-customer/{customerId}")
+public ResponseEntity<Map<String, Object>> getProposalsByCustomer(
+        @PathVariable Long customerId,
+        @RequestHeader("User-Id") Long userId,
+        @RequestHeader("User-Role") String userRole) {
+    
+    Map<String, Object> response = new HashMap<>();
+    try {
+        // Call service method to get proposals for this customer
+        List<Map<String, Object>> proposals = proposalsService.getProposalsByCustomerForDropdown(
+            customerId, userId, userRole
+        );
+        
+        response.put("success", true);
+        response.put("data", proposals);
+        response.put("message", "Proposals fetched successfully");
+        
+        return ResponseEntity.ok(response);
+    } catch (Exception e) {
+        response.put("success", false);
+        response.put("message", "Failed to fetch proposals: " + e.getMessage());
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+    }
+}
 }

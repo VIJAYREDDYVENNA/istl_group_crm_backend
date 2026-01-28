@@ -102,4 +102,6 @@ public interface InvoiceRepository extends JpaRepository<InvoiceEntity, Long> {
            "AND inv.deletedAt IS NULL " +
            "ORDER BY inv.invoiceDate DESC")
     List<InvoiceEntity> findByProjectIdAndDeletedAtIsNull(@Param("projectId") String projectId);
+    
+    
 }
