@@ -207,4 +207,10 @@ public class DropdownProjectService {
         return savedCustomer;
     }
 
+	public String getProjectIdByCustomerid(Long customerId) {
+		// TODO Auto-generated method stub
+		String projectId = projectRepository.findProjectIdByCustomerCode(customerId);
+		return projectId;
+	}
+
 }

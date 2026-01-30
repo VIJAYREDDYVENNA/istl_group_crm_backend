@@ -286,6 +286,12 @@ public interface VendorRepository extends JpaRepository<VendorEntity, Long> {
            "WHERE v.projectId = :projectId AND v.deletedAt IS NULL " +
            "ORDER BY v.lastPurchaseAmount DESC")
     List<VendorEntity> findTop5ByProjectIdOrderByTotalPurchaseValueDesc(@Param("projectId") String projectId);
-    
+
+	List<VendorEntity> findByProjectId(String projectId);
+
+	List<VendorEntity> findByGroupNameAndSubGroupName(String groupName, String subGroupName);
+
+	List<VendorEntity> findByGroupName(String groupName);
+	Optional<VendorEntity> findByName(String name);
 
 }

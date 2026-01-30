@@ -1,8 +1,12 @@
 package com.istlgroup.istl_group_crm_backend.service;
 
+import com.istlgroup.istl_group_crm_backend.entity.OrderBookEntity;
+import com.istlgroup.istl_group_crm_backend.entity.OrderBookItemEntity;
 import com.istlgroup.istl_group_crm_backend.entity.QuotationEntity;
 import com.istlgroup.istl_group_crm_backend.entity.QuotationItemEntity;
 import com.istlgroup.istl_group_crm_backend.repo.QuotationRepository;
+import com.istlgroup.istl_group_crm_backend.repo.OrderBookItemRepo;
+import com.istlgroup.istl_group_crm_backend.repo.OrderBookRepo;
 import com.istlgroup.istl_group_crm_backend.repo.QuotationItemRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +33,8 @@ public class QuotationService {
     
     private final QuotationRepository quotationRepository;
     private final QuotationItemRepository quotationItemRepository;
-    
+    private final OrderBookRepo orderBookRepo;
+    private final OrderBookItemRepo orderBookItemRepo;
     /**
      * Get quotations with role-based and project-based filtering
      */
@@ -401,7 +406,88 @@ public class QuotationService {
         
         return total.setScale(2, RoundingMode.HALF_UP);
     }
-    
+
+/**
+ * Get order book items for a project
+ * Used to pre-populate quotation items from order book
+ */
+@Transactional(readOnly = true)
+public List<Map<String, Object>> getOrderBookItemsByProject(String projectId) {
+    try {
+        log.info("Fetching order book items for project: {}", projectId);
+        
+        if (projectId == null || projectId.trim().isEmpty()) {
+            log.warn("Project ID is empty");
+            return new ArrayList<>();
+        }
+        
+        // Find all order books for this project
+        List<OrderBookEntity> orderBooks = orderBookRepo.findByProjectIdAndDeletedAtIsNull(projectId);
+        
+        if (orderBooks.isEmpty()) {
+            log.info("No order books found for project: {}", projectId);
+            return new ArrayList<>();
+        }
+        
+        log.info("Found {} order books for project {}", orderBooks.size(), projectId);
+        
+        List<Map<String, Object>> allItems = new ArrayList<>();
+        
+        // Collect items from all order books
+        for (OrderBookEntity orderBook : orderBooks) {
+            List<OrderBookItemEntity> items = orderBookItemRepo
+                .findByOrderBookIdOrderByLineNo(orderBook.getId());
+            
+            log.info("Order book {} has {} items", orderBook.getOrderBookNo(), items.size());
+            
+            for (OrderBookItemEntity item : items) {
+                Map<String, Object> itemMap = new HashMap<>();
+                
+                // Basic item info
+                itemMap.put("id", item.getId());
+                itemMap.put("orderBookId", orderBook.getId());
+                itemMap.put("orderBookNo", orderBook.getOrderBookNo());
+                
+                // Item details
+                itemMap.put("itemName", item.getItemName() != null ? item.getItemName() : "");
+                itemMap.put("specification", item.getSpecification() != null ? item.getSpecification() : "");
+                itemMap.put("description", item.getDescription() != null ? item.getDescription() : "");
+                
+                // Pricing and quantity
+                itemMap.put("quantity", item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO);
+                itemMap.put("unit", item.getUnit() != null ? item.getUnit() : "Nos");
+                itemMap.put("unitPrice", item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO);
+                itemMap.put("taxPercent", item.getTaxPercent() != null ? item.getTaxPercent() : BigDecimal.ZERO);
+                itemMap.put("discountPercent", item.getDiscountPercent() != null ? item.getDiscountPercent() : BigDecimal.ZERO);
+                
+                // Additional fields
+//                itemMap.put("hsnCode", item.getHsnCode());
+                itemMap.put("lineNo", item.getLineNo());
+                
+                // Calculate total (quantity * unitPrice * (1 + tax/100))
+                BigDecimal qty = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
+                BigDecimal price = item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO;
+                BigDecimal tax = item.getTaxPercent() != null ? item.getTaxPercent() : BigDecimal.ZERO;
+                
+                BigDecimal subtotal = qty.multiply(price);
+                BigDecimal taxAmount = subtotal.multiply(tax).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                BigDecimal total = subtotal.add(taxAmount);
+                
+                itemMap.put("totalAmount", total);
+                
+                allItems.add(itemMap);
+            }
+        }
+        
+        log.info("Returning {} total order book items for project {}", allItems.size(), projectId);
+        return allItems;
+        
+    } catch (Exception e) {
+        log.error("Error fetching order book items for project {}: {}", projectId, e.getMessage(), e);
+        return new ArrayList<>();
+    }
+}
+
     // Stats inner class
     @lombok.Data
     @lombok.Builder

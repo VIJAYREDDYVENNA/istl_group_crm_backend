@@ -32,4 +32,8 @@ public interface DropdownProjectRepository extends JpaRepository<DropdownProject
     List<DropdownProjectEntity> findAll(); // Add this for admin page
 
 	long countByProjectUniqueIdStartingWith(String prefix);
+ 
+	@Query(" SELECT projectUniqueId from DropdownProjectEntity p where p.customerCode =  (select c.customerCode from  CustomersEntity c where c.id = :customerId)")
+	
+	String findProjectIdByCustomerCode(@Param("customerId") Long customerId);
 }

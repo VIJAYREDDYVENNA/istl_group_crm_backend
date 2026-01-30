@@ -370,7 +370,6 @@ public LeadWrapper updateLead(Long leadId, LeadRequestWrapper requestWrapper, Lo
             
          // Update lead with customer_id
             updatedProposal.updateCustomerId(customer.getId(),leadId);
-//            updatedProposal = leadsRepo.save(updatedLead);
             
             String customerCode = customer.getCustomerCode();
             DropdownProjectEntity projectEntity =

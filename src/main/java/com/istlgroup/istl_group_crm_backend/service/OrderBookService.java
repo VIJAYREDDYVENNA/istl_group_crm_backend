@@ -61,6 +61,9 @@ public class OrderBookService {
     @Autowired
     private UsersRepo usersRepo;
     
+    @Autowired
+    private DropdownProjectService projectService; 
+    
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter DATETIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     
@@ -278,7 +281,11 @@ public class OrderBookService {
         orderBook.setRemarks(request.getRemarks());
         orderBook.setCreatedBy(createdBy);
         
-        // Save order book first
+        String projectId = projectService.getProjectIdByCustomerid(request.getCustomerId());
+        
+        orderBook.setProjectId(projectId);
+        System.err.println(projectId);
+        
         OrderBookEntity savedOrderBook = orderBookRepo.save(orderBook);
         
         // Save items
@@ -332,7 +339,10 @@ public class OrderBookService {
         if (request.getRemarks() != null) {
             orderBook.setRemarks(request.getRemarks());
         }
-        
+        String projectId = projectService.getProjectIdByCustomerid(request.getCustomerId());
+        orderBook.setProjectId(projectId);
+        System.err.println(projectId);
+
         // Update items if provided
         if (request.getItems() != null) {
             // Delete existing items

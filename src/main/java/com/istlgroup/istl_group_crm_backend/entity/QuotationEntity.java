@@ -9,8 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Quotation Entity - Matches existing quotations table
- * For Procurement quotations received from vendors
+ * Quotation Entity - UPDATED with vendor name and contact fields
+ * Supports both existing vendors (vendor_id) and new vendors (vendor_name, vendor_contact)
  */
 @Entity
 @Table(name = "quotations", indexes = {
@@ -44,8 +44,17 @@ public class QuotationEntity {
     @Column(name = "customer_id")
     private Long customerId;
     
+    // Existing vendor reference (optional if vendor_name is provided)
     @Column(name = "vendor_id")
     private Long vendorId;
+    
+    // NEW: For creating quotations with new vendors
+    @Column(name = "vendor_name", length = 255)
+    private String vendorName;
+    
+    // NEW: Vendor contact number (max 10 digits)
+    @Column(name = "vendor_contact", length = 20)
+    private String vendorContact;
     
     @Column(name = "rfq_id", length = 80)
     private String rfqId;
@@ -71,16 +80,11 @@ public class QuotationEntity {
     @Column(name = "group_name", length = 50)
     private String groupName;
     
-    // Additional fields for filtering
     @Column(name = "sub_group_name", length = 100)
     private String subGroupName;
     
     @Column(name = "project_id", length = 100)
     private String projectId;
-    
-    // Additional quotation details
-    @Column(name = "vendor_contact", length = 20)
-    private String vendorContact;
     
     @Column(name = "vendor_rating")
     private Double vendorRating;
@@ -126,7 +130,6 @@ public class QuotationEntity {
     private LocalDateTime createdAt;
 
     // Relationships
-    // NOTE: NO cascade - we manage items manually to avoid quotation_id = null issues
     @OneToMany(mappedBy = "quotation", fetch = FetchType.LAZY)
     @com.fasterxml.jackson.annotation.JsonManagedReference
     @Builder.Default
@@ -152,5 +155,30 @@ public class QuotationEntity {
     @Transient
     public boolean hasFile() {
         return quotationFile != null && quotationFile.length > 0;
+    }
+    
+    /**
+     * Check if this quotation uses an existing vendor (has vendor_id)
+     * or a new vendor (has vendor_name without vendor_id)
+     */
+    @Transient
+    public boolean hasExistingVendor() {
+        return vendorId != null;
+    }
+    
+    @Transient
+    public boolean hasNewVendor() {
+        return vendorId == null && vendorName != null && !vendorName.trim().isEmpty();
+    }
+    
+    /**
+     * Get display name for vendor (works for both existing and new vendors)
+     */
+    @Transient
+    public String getVendorDisplayName() {
+        if (vendorName != null && !vendorName.trim().isEmpty()) {
+            return vendorName;
+        }
+        return "Vendor #" + vendorId;
     }
 }
