@@ -47,4 +47,6 @@ public interface OrderBookRepo extends JpaRepository<OrderBookEntity, Long> {
         @Param("toDate") LocalDate toDate,
         Pageable pageable
     );
+
+	List<OrderBookEntity> findByProjectIdAndDeletedAtIsNull(String projectId);
 }

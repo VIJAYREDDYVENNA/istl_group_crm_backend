@@ -4,6 +4,7 @@ import com.istlgroup.istl_group_crm_backend.entity.PurchaseOrderEntity;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -223,4 +224,45 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrderEnti
     	List<PurchaseOrderEntity> findByProjectIdAndStatus(
     	    @Param("projectId") String projectId, 
     	    @Param("status") String status
-    	);}
+    	);
+
+	 List<PurchaseOrderEntity> findByProjectId(String projectId);
+
+	 List<PurchaseOrderEntity> findByGroupNameAndSubGroupName(String groupName, String subGroupName);
+
+	 List<PurchaseOrderEntity> findByGroupName(String groupName);
+	// Find POs by vendorId and project
+	 @Query("SELECT po FROM PurchaseOrderEntity po WHERE po.vendorId = :vendorId AND po.projectId = :projectId AND po.deletedAt IS NULL ORDER BY po.orderDate DESC")
+	 List<PurchaseOrderEntity> findByVendorIdAndProjectId(@Param("vendorId") Long vendorId, @Param("projectId") String projectId);
+
+	 // Find POs by vendorName and project (for new vendors)
+	 @Query("SELECT po FROM PurchaseOrderEntity po WHERE po.vendorName = :vendorName AND po.projectId = :projectId AND po.deletedAt IS NULL ORDER BY po.orderDate DESC")
+	 List<PurchaseOrderEntity> findByVendorNameAndProjectId(@Param("vendorName") String vendorName, @Param("projectId") String projectId);
+
+	 @Query("SELECT po FROM PurchaseOrderEntity po WHERE po.vendorName = :vendorName AND po.deletedAt IS NULL ORDER BY po.orderDate DESC")
+	 List<PurchaseOrderEntity> findByVendorNameOrderByOrderDateDesc(@Param("vendorName") String vendorName);
+
+	 // Find POs by project (excluding cancelled)
+	 @Query("SELECT po FROM PurchaseOrderEntity po WHERE po.projectId = :projectId AND po.status != :status AND po.deletedAt IS NULL ORDER BY po.orderDate DESC")
+	 List<PurchaseOrderEntity> findByProjectIdAndStatusNot(@Param("projectId") String projectId, @Param("status") String status);
+	 /**
+	  * Update vendor ID for all POs with matching vendor name
+	  */
+	 @Modifying
+	 @Query("UPDATE PurchaseOrderEntity po " +
+	        "SET po.vendorId = :vendorId " +
+	        "WHERE po.vendorName = :vendorName " +
+	        "AND po.vendorId IS NULL " +
+	        "AND po.projectId = :projectId " +
+	        "AND po.deletedAt IS NULL")
+	 int updateVendorIdForPOs(
+	     @Param("vendorId") Long vendorId,
+	     @Param("vendorName") String vendorName,
+	     @Param("projectId") String projectId
+	 );
+	 
+}
+
+
+
+

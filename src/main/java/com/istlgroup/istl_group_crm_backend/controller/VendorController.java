@@ -9,7 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
+import java.util.stream.Collectors;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -71,6 +71,80 @@ public class VendorController {
         }
     }
     
+ // ADD TO VendorController.java
+    /**
+     * GET /api/vendors/for-bills
+     * Get vendors for bills - includes vendors from vendors table + vendors from POs (new vendors)
+     * Filtered by project and deduplicated
+     */
+    @GetMapping("/for-bills")
+    public ResponseEntity<?> getVendorsForBills(
+            @RequestParam(required = false) String groupName,
+            @RequestParam(required = false) String subGroupName,
+            @RequestParam(required = false) String projectId,
+            HttpServletRequest request
+    ) {
+        try {
+            log.info("Fetching vendors for bills - group: {}, subGroup: {}, project: {}", 
+                     groupName, subGroupName, projectId);
+            
+            List<Map<String, Object>> vendors = vendorService.getVendorsForBills(
+                groupName, subGroupName, projectId
+            );
+            
+            return ResponseEntity.ok(vendors);
+            
+        } catch (Exception e) {
+            log.error("Error fetching vendors for bills", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+    /**
+     * GET /api/vendors/by-group-subgroup?groupName=X&subGroupName=Y
+     * Get vendors filtered by group and subgroup
+     * Used by Quotations form to show only relevant vendors
+     */
+    @GetMapping("/by-group-subgroup")
+    public ResponseEntity<Map<String, Object>> getVendorsByGroupAndSubGroup(
+            @RequestHeader("User-Id") Long userId,
+            @RequestHeader("User-Role") String userRole,
+            @RequestParam(required = false) String groupName,
+            @RequestParam(required = false) String subGroupName) {
+        try {
+            log.info("Fetching vendors by group: {}, subGroup: {}", groupName, subGroupName);
+            
+            // Call service to get filtered vendors
+            List<VendorEntity> vendors = vendorService.getVendorsByGroupAndSubGroup(groupName, subGroupName);
+            
+            // Convert to simple DTO for dropdown
+            List<Map<String, Object>> vendorList = vendors.stream()
+                    .map(v -> {
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("id", v.getId());
+                        map.put("name", v.getName());
+                        map.put("contact", v.getPhone());
+                        map.put("email", v.getEmail());
+                        map.put("groupName", v.getGroupName());
+                        map.put("subGroupName", v.getSubGroupName());
+                        return map;
+                    })
+                    .collect(Collectors.toList());
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", vendorList);
+            response.put("count", vendorList.size());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error fetching vendors by group/subgroup", e);
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+        }
+    }
     /**
      * GET /api/vendors/{id}
      * Get vendor by ID with purchase history

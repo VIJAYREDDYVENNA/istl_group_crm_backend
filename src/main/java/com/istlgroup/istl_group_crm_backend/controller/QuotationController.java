@@ -2,6 +2,7 @@ package com.istlgroup.istl_group_crm_backend.controller;
 
 import com.istlgroup.istl_group_crm_backend.wrapperClasses.QuotationDTO;
 import com.istlgroup.istl_group_crm_backend.entity.QuotationEntity;
+import com.istlgroup.istl_group_crm_backend.repo.QuotationRepository;
 import com.istlgroup.istl_group_crm_backend.wrapperClasses.QuotationMapper;
 import com.istlgroup.istl_group_crm_backend.service.QuotationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +32,7 @@ import java.util.stream.Collectors;
 public class QuotationController {
     
     private final QuotationService quotationService;
-    
+    private final QuotationRepository quotationRepository;
     /**
      * GET /api/quotations/procurement
      * Get all procurement quotations with filters
@@ -77,6 +79,11 @@ public class QuotationController {
                     .body(createErrorResponse(e.getMessage()));
         }
     }
+ // ============================================
+ // BACKEND: QuotationController - Add this endpoint
+ // ============================================
+
+ 
     
     /**
      * GET /api/quotations/{id}
@@ -395,23 +402,72 @@ public class QuotationController {
     }
     /**
      * GET /api/quotations/approved
-     * Get all approved quotations without PO
+     * Get approved quotations with optional filtering by group/subgroup/project
      */
     @GetMapping("/approved")
-    public ResponseEntity<?> getApprovedQuotations(HttpServletRequest request) {
+    public ResponseEntity<?> getApprovedQuotations(
+            @RequestParam(required = false) String groupName,
+            @RequestParam(required = false) String subGroupName,
+            @RequestParam(required = false) String projectId,
+            HttpServletRequest request) {
         try {
+            log.info("Fetching approved quotations - group: {}, subGroup: {}, project: {}", 
+                     groupName, subGroupName, projectId);
+            
+            // Get user info
             Long userId = getUserIdFromRequest(request);
+            String userRole = getUserRoleFromRequest(request);
             
-            List<QuotationEntity> quotations = quotationService.getApprovedQuotations();
+            // Get all approved quotations
+            List<QuotationEntity> quotations = quotationRepository
+                    .findByStatusAndPoIdIsNullAndDeletedAtIsNullOrderByUploadedAtDesc("Approved");
             
-            // Convert to DTOs to avoid circular reference
-            List<QuotationDTO> quotationDTOs = quotations.stream()
-                    .map(QuotationMapper::toDTO)
+            // Filter by group if provided
+            if (groupName != null && !groupName.trim().isEmpty()) {
+                quotations = quotations.stream()
+                        .filter(q -> groupName.equals(q.getGroupName()))
+                        .collect(Collectors.toList());
+            }
+            
+            // Filter by subgroup if provided
+            if (subGroupName != null && !subGroupName.trim().isEmpty()) {
+                quotations = quotations.stream()
+                        .filter(q -> subGroupName.equals(q.getSubGroupName()))
+                        .collect(Collectors.toList());
+            }
+            
+            // Filter by project if provided
+            if (projectId != null && !projectId.trim().isEmpty()) {
+                quotations = quotations.stream()
+                        .filter(q -> projectId.equals(q.getProjectId()))
+                        .collect(Collectors.toList());
+            }
+            
+            // Convert to simplified map (without items for dropdown performance)
+            List<Map<String, Object>> quotationList = quotations.stream()
+                    .map(q -> {
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("id", q.getId());
+                        map.put("quoteNo", q.getQuoteNo());
+                        map.put("vendorId", q.getVendorId());
+                        map.put("vendorName", q.getVendorName());
+                        map.put("vendorContact", q.getVendorContact());
+                        map.put("rfqId", q.getRfqId());
+                        map.put("category", q.getCategory());
+                        map.put("totalValue", q.getTotalValue());
+                        map.put("validTill", q.getValidTill());
+                        map.put("groupName", q.getGroupName());
+                        map.put("subGroupName", q.getSubGroupName());
+                        map.put("projectId", q.getProjectId());
+                        map.put("paymentTerms", q.getPaymentTerms());
+                        map.put("notes", q.getNotes());
+                        map.put("uploadedAt", q.getUploadedAt());
+                        return map;
+                    })
                     .collect(Collectors.toList());
             
-            log.info("Fetched {} approved quotations for user: {}", quotationDTOs.size(), userId);
-            
-            return ResponseEntity.ok(quotationDTOs);
+            log.info("Returning {} approved quotations", quotationList.size());
+            return ResponseEntity.ok(quotationList);
             
         } catch (Exception e) {
             log.error("Error fetching approved quotations", e);
@@ -449,6 +505,37 @@ public class QuotationController {
             log.error("Error linking PO to quotation: {}", id, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(createErrorResponse(e.getMessage()));
+        }
+    }
+    
+ // ADD TO QuotationController.java
+
+    /**
+     * GET /api/quotations/orderbook-items/{projectId}
+     * Get order book items for a project (to pre-populate quotation items)
+     */
+    @GetMapping("/orderbook-items/{projectId}")
+    public ResponseEntity<Map<String, Object>> getOrderBookItemsByProject(
+            @PathVariable String projectId,
+            @RequestHeader("User-Id") Long userId,
+            @RequestHeader("User-Role") String userRole) {
+        try {
+            log.info("Fetching order book items for project: {}", projectId);
+            
+            List<Map<String, Object>> items = quotationService.getOrderBookItemsByProject(projectId);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("data", items);
+            response.put("count", items.size());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error fetching order book items for project: {}", projectId, e);
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
 }

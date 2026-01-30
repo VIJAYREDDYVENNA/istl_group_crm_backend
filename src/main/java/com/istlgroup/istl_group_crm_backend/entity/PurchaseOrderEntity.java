@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,8 +32,12 @@ public class PurchaseOrderEntity {
     @Column(name = "po_no", unique = true, length = 80, nullable = false)
     private String poNo;
     
-    @Column(name = "vendor_id", nullable = false)
+    @Column(name = "vendor_name", nullable = false)
+    private String vendorName;
+    @Column(name = "vendor_id")  
     private Long vendorId;
+    @Column(name = "vendor_contact", nullable = false)
+    private String vendorContact;
     
     @Column(name = "quotation_id")
     private Long quotationId;
@@ -129,5 +134,35 @@ public class PurchaseOrderEntity {
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
         // total_items_pending is calculated by database
+    }
+    
+    /**
+     * Check if this PO uses an existing vendor (has vendor_id)
+     */
+    @Transient
+    public boolean hasExistingVendor() {
+        return vendorId != null;
+    }
+
+    /**
+     * Check if this PO uses a new vendor (has vendor_name without vendor_id)
+     */
+    @Transient
+    public boolean hasNewVendor() {
+        return vendorId == null && vendorName != null && !vendorName.trim().isEmpty();
+    }
+
+    /**
+     * Get display name for vendor (works for both existing and new vendors)
+     */
+    @Transient
+    public String getVendorDisplayName() {
+        if (vendorName != null && !vendorName.trim().isEmpty()) {
+            return vendorName;
+        }
+        if (vendorId != null) {
+            return "Vendor #" + vendorId;
+        }
+        return "Unknown Vendor";
     }
 }

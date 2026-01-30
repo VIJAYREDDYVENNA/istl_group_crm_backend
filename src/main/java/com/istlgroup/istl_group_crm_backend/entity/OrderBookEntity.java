@@ -22,6 +22,9 @@ public class OrderBookEntity {
     @Column(name = "customer_id", nullable = false)
     private Long customerId;
     
+    @Column(name = "project_id")
+    private String projectId;
+    
     @Column(name = "proposal_id")
     private Long proposalId;
     

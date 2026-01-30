@@ -3,9 +3,12 @@ package com.istlgroup.istl_group_crm_backend.service;
 import com.istlgroup.istl_group_crm_backend.entity.BillEntity;
 import com.istlgroup.istl_group_crm_backend.entity.BillItemEntity;
 import com.istlgroup.istl_group_crm_backend.entity.BillPaymentEntity;
+import com.istlgroup.istl_group_crm_backend.entity.PurchaseOrderEntity;
+import com.istlgroup.istl_group_crm_backend.entity.PurchaseOrderItemEntity;
 import com.istlgroup.istl_group_crm_backend.repo.BillItemRepository;
 import com.istlgroup.istl_group_crm_backend.repo.BillPaymentRepository;
 import com.istlgroup.istl_group_crm_backend.repo.BillRepository;
+import com.istlgroup.istl_group_crm_backend.repo.PurchaseOrderItemRepository;
 import com.istlgroup.istl_group_crm_backend.repo.PurchaseOrderRepository;
 import com.istlgroup.istl_group_crm_backend.repo.UsersRepo;
 import com.istlgroup.istl_group_crm_backend.repo.VendorRepository;
@@ -49,7 +52,7 @@ public class BillService {
     private final VendorRepository vendorRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final UsersRepo usersRepo;
-    
+    private final PurchaseOrderItemRepository purchaseOrderItemRepository;
     private static final String UPLOAD_DIR = "uploads/bills/";
     private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
     
@@ -109,132 +112,282 @@ public class BillService {
     }
     
     @Transactional
-    public BillDTO createBill(BillDTO dto, Long userId) {
-        log.info("Creating bill for vendor: {}, user: {}", dto.getVendorId(), userId);
-        
-        // Validate
-        if (dto.getVendorId() == null) {
-            throw new RuntimeException("Vendor ID is required");
-        }
-        
-        // Check vendor exists
-        vendorRepository.findById(dto.getVendorId())
-                .orElseThrow(() -> new RuntimeException("Vendor not found: " + dto.getVendorId()));
-        
-        // Generate bill number if not provided
-        if (dto.getBillNo() == null || dto.getBillNo().isEmpty()) {
-            dto.setBillNo(generateBillNumber());
-        }
-        
-        // Check if bill number already exists
-        if (billRepository.existsByBillNo(dto.getBillNo())) {
-            throw new RuntimeException("Bill number already exists: " + dto.getBillNo());
-        }
-        
-        // Create bill entity using new operator (NO Builder)
-        BillEntity bill = new BillEntity();
-        bill.setBillNo(dto.getBillNo());
-        bill.setVendorId(dto.getVendorId());
-        bill.setPoId(dto.getPoId());
-        bill.setBillDate(dto.getBillDate());
-        bill.setDueDate(dto.getDueDate());
-        bill.setTotalAmount(BigDecimal.ZERO);
-        bill.setPaidAmount(BigDecimal.ZERO);
-        bill.setStatus("Pending");
-        bill.setProjectId(dto.getProjectId());
-        bill.setGroupId(dto.getGroupId());
-        bill.setSubGroupId(dto.getSubGroupId());
-        bill.setNotes(dto.getNotes());
-        bill.setCreatedBy(userId);
-        bill.setCreatedAt(LocalDateTime.now());
-        bill.setUploadedBy(userId);
-        bill.setUploadedOn(LocalDateTime.now());
-        
-        // IMPORTANT: Save bill FIRST to get ID
-        bill = billRepository.save(bill);
-        log.info("Bill saved with ID: {}", bill.getId());
-        
-        // Add items if provided
-        if (dto.getItems() != null && !dto.getItems().isEmpty()) {
-            log.info("Adding {} items to bill", dto.getItems().size());
+public BillDTO createBill(BillDTO dto, Long userId) {
+    log.info("Creating bill for vendor: {}, PO: {}", dto.getVendorId(), dto.getPoId());
+    
+    // Validate vendor
+    if (dto.getVendorId() == null) {
+        throw new RuntimeException("Vendor ID is required");
+    }
+    
+    vendorRepository.findById(dto.getVendorId())
+            .orElseThrow(() -> new RuntimeException("Vendor not found"));
+    
+    // Validate PO if provided
+    PurchaseOrderEntity po = null;
+    if (dto.getPoId() != null) {
+        po = purchaseOrderRepository.findById(dto.getPoId())
+                .orElseThrow(() -> new RuntimeException("Purchase Order not found"));
+    }
+    
+    // Generate bill number
+    if (dto.getBillNo() == null || dto.getBillNo().isEmpty()) {
+        dto.setBillNo(generateBillNumber());
+    }
+    
+    if (billRepository.existsByBillNo(dto.getBillNo())) {
+        throw new RuntimeException("Bill number already exists");
+    }
+    
+    // Create bill entity
+    BillEntity bill = new BillEntity();
+    bill.setBillNo(dto.getBillNo());
+    bill.setVendorId(dto.getVendorId());
+    bill.setPoId(dto.getPoId());
+    bill.setBillDate(dto.getBillDate());
+    bill.setDueDate(dto.getDueDate());
+    bill.setTotalAmount(BigDecimal.ZERO);
+    bill.setPaidAmount(BigDecimal.ZERO);
+    bill.setStatus("Pending");
+    bill.setProjectId(dto.getProjectId());
+    bill.setGroupId(dto.getGroupId());
+    bill.setSubGroupId(dto.getSubGroupId());
+    bill.setNotes(dto.getNotes());
+    bill.setCreatedBy(userId);
+    bill.setCreatedAt(LocalDateTime.now());
+    bill.setUploadedBy(userId);
+    bill.setUploadedOn(LocalDateTime.now());
+    
+    // Save bill FIRST
+    bill = billRepository.save(bill);
+    log.info("Bill saved with ID: {}", bill.getId());
+    
+    // Add items and update PO item delivered quantities
+    if (dto.getItems() != null && !dto.getItems().isEmpty()) {
+        for (BillItemDTO itemDTO : dto.getItems()) {
+            // Validate po_item_id
+            if (itemDTO.getPoItemId() == null) {
+                throw new RuntimeException("PO Item ID is required for all bill items");
+            }
             
-            for (BillItemDTO itemDTO : dto.getItems()) {
-                BillItemEntity item = new BillItemEntity();
-                item.setPoItemId(itemDTO.getPoItemId());
-                item.setDescription(itemDTO.getDescription());
-                item.setQuantity(itemDTO.getQuantity() != null ? itemDTO.getQuantity() : BigDecimal.ONE);
-                item.setUnitPrice(itemDTO.getUnitPrice() != null ? itemDTO.getUnitPrice() : BigDecimal.ZERO);
-                item.setTaxPercent(itemDTO.getTaxPercent() != null ? itemDTO.getTaxPercent() : BigDecimal.ZERO);
-                
-                // addItem method initializes list if null
-                bill.addItem(item);
+            // Get PO item
+            PurchaseOrderItemEntity poItem = purchaseOrderItemRepository
+                    .findById(itemDTO.getPoItemId())
+                    .orElseThrow(() -> new RuntimeException("PO Item not found"));
+            
+            // Validate quantity
+            BigDecimal billQty = itemDTO.getQuantity() != null 
+                ? itemDTO.getQuantity() 
+                : BigDecimal.ONE;
+            
+            BigDecimal pending = poItem.getPendingQty() != null 
+                ? poItem.getPendingQty() 
+                : BigDecimal.ZERO;
+            
+            if (billQty.compareTo(pending) > 0) {
+                throw new RuntimeException(
+                    String.format(
+                        "Cannot bill %.2f for item '%s'. Only %.2f pending delivery " +
+                        "(Ordered: %.2f, Delivered: %.2f)", 
+                        billQty,
+                        poItem.getItemName() != null ? poItem.getItemName() : "Unknown",
+                        pending,
+                        poItem.getQuantity(),
+                        poItem.getDeliveredQty()
+                    )
+                );
+            }
+            
+            // Create bill item
+            BillItemEntity item = new BillItemEntity();
+            item.setPoItemId(itemDTO.getPoItemId());
+            item.setDescription(poItem.getDescription());
+            item.setQuantity(billQty);
+            item.setUnitPrice(poItem.getUnitPrice());
+            item.setTaxPercent(poItem.getTaxPercent());
+            
+            bill.addItem(item);
+            
+            // ✅ UPDATE DELIVERED QUANTITY in PO item
+            BigDecimal newDeliveredQty = poItem.getDeliveredQty().add(billQty);
+            poItem.setDeliveredQty(newDeliveredQty);
+            purchaseOrderItemRepository.save(poItem);
+            
+            log.info("Updated PO item {} - Delivered: {} → {}, Pending: {}", 
+                     poItem.getId(), 
+                     poItem.getDeliveredQty().subtract(billQty), 
+                     poItem.getDeliveredQty(),
+                     poItem.getPendingQty());
+        }
+    }
+    
+    // Calculate total
+    recalculateBillTotal(bill);
+    
+    // Save with items
+    bill = billRepository.save(bill);
+    
+    log.info("Created bill: {} with {} items", bill.getBillNo(), bill.getItems().size());
+    if (dto.getPoId() != null) {
+        updatePOStatusAfterBill(dto.getPoId());
+    }
+    return enrichBillEntity(bill);
+}
+    /**
+     * Recalculate PO totals and update status after bill
+     */
+    @Transactional
+    private void updatePOStatusAfterBill(Long poId) {
+        if (poId == null) return;
+        
+        PurchaseOrderEntity po = purchaseOrderRepository.findById(poId).orElse(null);
+        if (po == null) return;
+        
+        // ✅ Get totals from PO items
+        Integer totalDelivered = purchaseOrderItemRepository.getTotalDeliveredItems(poId);
+        Integer totalOrdered = purchaseOrderItemRepository.getTotalOrderedItems(poId);
+        
+        // ✅ Update PO
+        po.setTotalItemsDelivered(totalDelivered != null ? totalDelivered : 0);
+        po.setTotalItemsOrdered(totalOrdered != null ? totalOrdered : 0);
+        
+        // ✅ Update status
+        if (totalDelivered != null && totalOrdered != null) {
+            if (totalDelivered == 0) {
+                po.setStatus("Ordered");
+            } else if (totalDelivered.equals(totalOrdered)) {
+                po.setStatus("Delivered");
+            } else {
+                po.setStatus("Partially Delivered");
             }
         }
         
-        // Calculate total amount
+        purchaseOrderRepository.save(po);
+        
+        log.info("Updated PO {} - Delivered: {}/{}, Status: {}", 
+                 po.getPoNo(), totalDelivered, totalOrdered, po.getStatus());
+    } 
+    @Transactional
+public BillDTO updateBill(Long id, BillDTO dto, Long userId) {
+    BillEntity bill = billRepository.findByIdAndNotDeleted(id)
+            .orElseThrow(() -> new RuntimeException("Bill not found"));
+    
+    if ("Paid".equals(bill.getStatus())) {
+        throw new RuntimeException("Cannot edit paid bills");
+    }
+    
+    // Update basic fields
+    if (dto.getBillDate() != null) bill.setBillDate(dto.getBillDate());
+    if (dto.getDueDate() != null) bill.setDueDate(dto.getDueDate());
+    if (dto.getNotes() != null) bill.setNotes(dto.getNotes());
+    
+    // Handle item updates
+    if (dto.getItems() != null) {
+        // ✅ First, restore old delivered quantities
+        for (BillItemEntity oldItem : bill.getItems()) {
+            if (oldItem.getPoItemId() != null) {
+                purchaseOrderItemRepository.findById(oldItem.getPoItemId())
+                    .ifPresent(poItem -> {
+                        BigDecimal restored = poItem.getDeliveredQty()
+                                .subtract(oldItem.getQuantity());
+                        if (restored.compareTo(BigDecimal.ZERO) < 0) {
+                            restored = BigDecimal.ZERO;
+                        }
+                        poItem.setDeliveredQty(restored);
+                        purchaseOrderItemRepository.save(poItem);
+                    });
+            }
+        }
+        
+        // Clear old items
+        bill.getItems().clear();
+        
+        // ✅ Add new items and update delivered quantities
+        for (BillItemDTO itemDTO : dto.getItems()) {
+            if (itemDTO.getPoItemId() == null) {
+                throw new RuntimeException("PO Item ID required");
+            }
+            
+            PurchaseOrderItemEntity poItem = purchaseOrderItemRepository
+                    .findById(itemDTO.getPoItemId())
+                    .orElseThrow(() -> new RuntimeException("PO Item not found"));
+            
+            BigDecimal billQty = itemDTO.getQuantity();
+            BigDecimal pending = poItem.getPendingQty();
+            
+            if (billQty.compareTo(pending) > 0) {
+                throw new RuntimeException("Quantity exceeds pending delivery");
+            }
+            
+            BillItemEntity item = BillItemEntity.builder()
+                    .bill(bill)
+                    .poItemId(itemDTO.getPoItemId())
+                    .description(poItem.getDescription())
+                    .quantity(billQty)
+                    .unitPrice(poItem.getUnitPrice())
+                    .taxPercent(poItem.getTaxPercent())
+                    .build();
+            bill.addItem(item);
+            
+            // Update delivered quantity
+            BigDecimal newDelivered = poItem.getDeliveredQty().add(billQty);
+            poItem.setDeliveredQty(newDelivered);
+            purchaseOrderItemRepository.save(poItem);
+        }
+        
         recalculateBillTotal(bill);
-        
-        // Save again with items and total
-        bill = billRepository.save(bill);
-        
-        log.info("Created bill: {} with total: {}", bill.getBillNo(), bill.getTotalAmount());
-        
-        return enrichBillEntity(bill);
     }
     
-    @Transactional
-    public BillDTO updateBill(Long id, BillDTO dto, Long userId) {
-        BillEntity bill = billRepository.findByIdAndNotDeleted(id)
-                .orElseThrow(() -> new RuntimeException("Bill not found: " + id));
-        
-        if ("Paid".equals(bill.getStatus())) {
-            throw new RuntimeException("Cannot edit paid bills");
-        }
-        
-        if (dto.getBillDate() != null) bill.setBillDate(dto.getBillDate());
-        if (dto.getDueDate() != null) bill.setDueDate(dto.getDueDate());
-        if (dto.getNotes() != null) bill.setNotes(dto.getNotes());
-        
-        if (dto.getItems() != null) {
-            bill.getItems().clear();
-            for (BillItemDTO itemDTO : dto.getItems()) {
-                BillItemEntity item = BillItemEntity.builder()
-                        .bill(bill)
-                        .poItemId(itemDTO.getPoItemId())
-                        .description(itemDTO.getDescription())
-                        .quantity(itemDTO.getQuantity())
-                        .unitPrice(itemDTO.getUnitPrice())
-                        .taxPercent(itemDTO.getTaxPercent())
-                        .build();
-                bill.addItem(item);
-            }
-            recalculateBillTotal(bill);
-        }
-        
-        bill.setUpdatedBy(userId);
-        bill.setUpdatedAt(LocalDateTime.now());
-        bill = billRepository.save(bill);
-        
-        log.info("Updated bill: {} by user: {}", bill.getBillNo(), userId);
-        return enrichBillEntity(bill);
+    bill.setUpdatedBy(userId);
+    bill.setUpdatedAt(LocalDateTime.now());
+    bill = billRepository.save(bill);
+    
+    log.info("Updated bill: {}", bill.getBillNo());
+    return enrichBillEntity(bill);
+}
+    
+   @Transactional
+public void deleteBill(Long id, Long userId) {
+    BillEntity bill = billRepository.findByIdAndNotDeleted(id)
+            .orElseThrow(() -> new RuntimeException("Bill not found"));
+    
+    if ("Paid".equals(bill.getStatus())) {
+        throw new RuntimeException("Cannot delete paid bills");
     }
     
-    @Transactional
-    public void deleteBill(Long id, Long userId) {
-        BillEntity bill = billRepository.findByIdAndNotDeleted(id)
-                .orElseThrow(() -> new RuntimeException("Bill not found: " + id));
-        
-        if ("Paid".equals(bill.getStatus())) {
-            throw new RuntimeException("Cannot delete paid bills");
+    // ✅ RESTORE delivered quantities in PO items
+    for (BillItemEntity item : bill.getItems()) {
+        if (item.getPoItemId() != null) {
+            purchaseOrderItemRepository.findById(item.getPoItemId())
+                .ifPresent(poItem -> {
+                    BigDecimal newDeliveredQty = poItem.getDeliveredQty()
+                            .subtract(item.getQuantity());
+                    
+                    // Don't allow negative
+                    if (newDeliveredQty.compareTo(BigDecimal.ZERO) < 0) {
+                        newDeliveredQty = BigDecimal.ZERO;
+                    }
+                    
+                    poItem.setDeliveredQty(newDeliveredQty);
+                    purchaseOrderItemRepository.save(poItem);
+                    
+                    log.info("Restored PO item {} - Delivered: {} (reduced by {})", 
+                             poItem.getId(), 
+                             poItem.getDeliveredQty(), 
+                             item.getQuantity());
+                });
         }
-        
-        bill.setDeletedAt(LocalDateTime.now());
-        bill.setUpdatedBy(userId);
-        bill.setUpdatedAt(LocalDateTime.now());
-        billRepository.save(bill);
-        
-        log.info("Deleted bill: {} by user: {}", bill.getBillNo(), userId);
     }
+    
+    bill.setDeletedAt(LocalDateTime.now());
+    bill.setUpdatedBy(userId);
+    bill.setUpdatedAt(LocalDateTime.now());
+    billRepository.save(bill);
+    if (bill.getPoId() != null) {
+        updatePOStatusAfterBill(bill.getPoId());
+    }
+    log.info("Deleted bill: {} and restored PO item quantities", bill.getBillNo());
+}
     
     @Transactional
     public String uploadBillFile(Long billId, MultipartFile file, Long userId) throws IOException {

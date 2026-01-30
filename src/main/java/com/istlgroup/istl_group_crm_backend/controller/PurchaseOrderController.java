@@ -1,6 +1,8 @@
 package com.istlgroup.istl_group_crm_backend.controller;
 
 import com.istlgroup.istl_group_crm_backend.entity.PurchaseOrderEntity;
+import com.istlgroup.istl_group_crm_backend.entity.PurchaseOrderItemEntity;
+import com.istlgroup.istl_group_crm_backend.repo.PurchaseOrderItemRepository;
 import com.istlgroup.istl_group_crm_backend.service.PurchaseOrderService;
 import com.istlgroup.istl_group_crm_backend.wrapperClasses.PurchaseOrderDropdownWrapper;
 
@@ -18,8 +20,10 @@ import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;  
+import java.util.Map;
+import java.util.stream.Collectors;  
 
 @RestController
 @RequestMapping("/api/purchase-orders")
@@ -29,7 +33,7 @@ import java.util.Map;
 public class PurchaseOrderController {
     
     private final PurchaseOrderService purchaseOrderService;
-    
+    private final PurchaseOrderItemRepository purchaseOrderItemRepository;
     /**
      * GET /api/purchase-orders
      * Get all purchase orders with filters
@@ -90,88 +94,105 @@ public class PurchaseOrderController {
  // ADD THIS METHOD TO YOUR EXISTING PurchaseOrderController.java
 
     /**
-     * POST /api/purchase-orders/from-quotation
-     * Create PO from quotation data sent from frontend
-     */
-    @PostMapping("/from-quotation")
-    public ResponseEntity<?> createPOFromQuotation(
-            @RequestBody Map<String, Object> poRequest,
-            HttpServletRequest request
-    ) {
-        try {
-            Long userId = getUserIdFromRequest(request);
-            
-            // Extract and validate quotationId
-            Object quotationIdObj = poRequest.get("quotationId");
-            if (quotationIdObj == null) {
-                return ResponseEntity.badRequest()
-                        .body(createErrorResponse("Quotation ID is required"));
-            }
-            Long quotationId = Long.parseLong(quotationIdObj.toString());
-            
-            // Extract PO data
-            String orderDate = (String) poRequest.get("orderDate");
-            String expectedDelivery = (String) poRequest.get("expectedDelivery");
-            String paymentTerms = (String) poRequest.get("paymentTerms");
-            String shippingAddress = (String) poRequest.get("shippingAddress");
-            String notes = (String) poRequest.get("notes");
-            
-            // Validate required fields
-            if (orderDate == null || orderDate.isEmpty()) {
-                return ResponseEntity.badRequest()
-                        .body(createErrorResponse("Order date is required"));
-            }
-            
-            if (expectedDelivery == null || expectedDelivery.isEmpty()) {
-                return ResponseEntity.badRequest()
-                        .body(createErrorResponse("Expected delivery date is required"));
-            }
-            
-            // Extract items
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> itemsData = (List<Map<String, Object>>) poRequest.get("items");
-            
-            if (itemsData == null || itemsData.isEmpty()) {
-                return ResponseEntity.badRequest()
-                        .body(createErrorResponse("At least one item is required"));
-            }
-            
-            // Create PO with custom data
-            PurchaseOrderEntity po = purchaseOrderService.createPOFromQuotationWithCustomData(
-                quotationId, 
-                userId,
-                orderDate,
-                expectedDelivery,
-                paymentTerms != null ? paymentTerms : "",
-                shippingAddress != null ? shippingAddress : "",
-                notes != null ? notes : "",
-                itemsData
-            );
-            
-            // Link PO back to quotation
-            try {
-                linkPOToQuotation(quotationId, po.getId());
-            } catch (Exception e) {
-                log.warn("Failed to link PO to quotation: {}", e.getMessage());
-                // Don't fail the whole operation for this
-            }
-            
-            // Return success with PO data
-            Map<String, Object> response = createSuccessResponse(
-                "Purchase Order created successfully", 
-                null
-            );
-            response.put("poNo", po.getPoNo());
-            response.put("poId", po.getId());
-            
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-            
-        } catch (Exception e) {
-            log.error("Error creating PO from quotation", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(createErrorResponse(e.getMessage()));
+ * POST /api/purchase-orders/from-quotation
+ * Create PO from quotation data with support for new vendors
+ */
+@PostMapping("/from-quotation")
+public ResponseEntity<?> createPOFromQuotation(
+        @RequestBody Map<String, Object> poRequest,
+        HttpServletRequest request
+) {
+    try {
+        Long userId = getUserIdFromRequest(request);
+        
+        // Extract and validate quotationId
+        Object quotationIdObj = poRequest.get("quotationId");
+        if (quotationIdObj == null) {
+            return ResponseEntity.badRequest()
+                    .body(createErrorResponse("Quotation ID is required"));
         }
+        Long quotationId = Long.parseLong(quotationIdObj.toString());
+        
+        // Extract vendor info (support both existing and new vendors)
+        Long vendorId = poRequest.get("vendorId") != null ? 
+                Long.parseLong(poRequest.get("vendorId").toString()) : null;
+        String vendorName = (String) poRequest.get("vendorName");
+        String vendorContact = (String) poRequest.get("vendorContact");
+        
+        // Extract PO data
+        String groupName = (String) poRequest.get("groupName");
+        String subGroupName = (String) poRequest.get("subGroupName");
+        String projectId = (String) poRequest.get("projectId");
+        String rfqId = (String) poRequest.get("rfqId");
+        String orderDate = (String) poRequest.get("orderDate");
+        String expectedDelivery = (String) poRequest.get("expectedDelivery");
+        String paymentTerms = (String) poRequest.get("paymentTerms");
+        String shippingAddress = (String) poRequest.get("shippingAddress");
+        String notes = (String) poRequest.get("notes");
+        
+        // Validate required fields
+        if (orderDate == null || orderDate.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(createErrorResponse("Order date is required"));
+        }
+        
+        if (expectedDelivery == null || expectedDelivery.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(createErrorResponse("Expected delivery date is required"));
+        }
+        
+        // Extract items
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> itemsData = (List<Map<String, Object>>) poRequest.get("items");
+        
+        if (itemsData == null || itemsData.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(createErrorResponse("At least one item is required"));
+        }
+        
+        // Create PO with custom data
+        PurchaseOrderEntity po = purchaseOrderService.createPOFromQuotationWithCustomData(
+            quotationId, 
+            userId,
+            vendorId,
+            vendorName,
+            vendorContact,
+            groupName,
+            subGroupName,
+            projectId,
+            rfqId,
+            orderDate,
+            expectedDelivery,
+            paymentTerms != null ? paymentTerms : "",
+            shippingAddress != null ? shippingAddress : "",
+            notes != null ? notes : "",
+            itemsData
+        );
+        
+        // Link PO back to quotation
+        try {
+            linkPOToQuotation(quotationId, po.getId());
+        } catch (Exception e) {
+            log.warn("Failed to link PO to quotation: {}", e.getMessage());
+            // Don't fail the whole operation for this
+        }
+        
+        // Return success with PO data
+        Map<String, Object> response = createSuccessResponse(
+            "Purchase Order created successfully", 
+            null
+        );
+        response.put("poNo", po.getPoNo());
+        response.put("id", po.getId());
+        
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        
+    } catch (Exception e) {
+        log.error("Error creating PO from quotation", e);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(createErrorResponse(e.getMessage()));
     }
+}
 
     /**
      * Link PO back to quotation
@@ -235,25 +256,104 @@ public class PurchaseOrderController {
      * POST /api/purchase-orders
      * Create PO manually (without quotation)
      */
-    @PostMapping
-    public ResponseEntity<?> createPurchaseOrder(
-            @RequestBody PurchaseOrderEntity po,
-            HttpServletRequest request
-    ) {
-        try {
-            Long userId = getUserIdFromRequest(request);
-            
-            PurchaseOrderEntity created = purchaseOrderService.createPurchaseOrder(po, userId);
-            
-            return ResponseEntity.status(HttpStatus.CREATED)
-                    .body(createSuccessResponse("Purchase Order created successfully", created));
-            
-        } catch (Exception e) {
-            log.error("Error creating purchase order", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(createErrorResponse(e.getMessage()));
+    /**
+ * POST /api/purchase-orders
+ * Create PO from order books or manually (supports new vendors)
+ */
+@PostMapping
+public ResponseEntity<?> createPurchaseOrder(
+        @RequestBody Map<String, Object> poRequest,
+        HttpServletRequest request
+) {
+    try {
+        Long userId = getUserIdFromRequest(request);
+        
+        // Extract vendor info
+        Long vendorId = poRequest.get("vendorId") != null ? 
+                Long.parseLong(poRequest.get("vendorId").toString()) : null;
+        String vendorName = (String) poRequest.get("vendorName");
+        String vendorContact = (String) poRequest.get("vendorContact");
+        
+        // Validate vendor
+        if (vendorId == null && (vendorName == null || vendorName.trim().isEmpty())) {
+            return ResponseEntity.badRequest()
+                    .body(createErrorResponse("Either vendorId or vendorName must be provided"));
         }
+        
+        // Validate contact for new vendors
+        if (vendorId == null && vendorContact != null && vendorContact.length() != 10) {
+            return ResponseEntity.badRequest()
+                    .body(createErrorResponse("Vendor contact must be exactly 10 digits"));
+        }
+        
+        // Extract PO data
+        String groupName = (String) poRequest.get("groupName");
+        String subGroupName = (String) poRequest.get("subGroupName");
+        String projectId = (String) poRequest.get("projectId");
+        String orderDate = (String) poRequest.get("orderDate");
+        String expectedDelivery = (String) poRequest.get("expectedDelivery");
+        String paymentTerms = (String) poRequest.get("paymentTerms");
+        String shippingAddress = (String) poRequest.get("shippingAddress");
+        String notes = (String) poRequest.get("notes");
+        
+        // Validate
+        if (groupName == null || groupName.trim().isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(createErrorResponse("Group name is required"));
+        }
+        
+        if (orderDate == null || orderDate.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(createErrorResponse("Order date is required"));
+        }
+        
+        if (expectedDelivery == null || expectedDelivery.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(createErrorResponse("Expected delivery date is required"));
+        }
+        
+        // Extract items
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> itemsData = (List<Map<String, Object>>) poRequest.get("items");
+        
+        if (itemsData == null || itemsData.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(createErrorResponse("At least one item is required"));
+        }
+        
+        // Create PO
+        PurchaseOrderEntity po = purchaseOrderService.createPOFromOrderBooks(
+            userId,
+            vendorId,
+            vendorName,
+            vendorContact,
+            groupName,
+            subGroupName,
+            projectId,
+            orderDate,
+            expectedDelivery,
+            paymentTerms,
+            shippingAddress,
+            notes,
+            itemsData
+        );
+        
+        // Return success
+        Map<String, Object> response = createSuccessResponse(
+            "Purchase Order created successfully", 
+            null
+        );
+        response.put("poNo", po.getPoNo());
+        response.put("id", po.getId());
+        
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        
+    } catch (Exception e) {
+        log.error("Error creating purchase order", e);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(createErrorResponse(e.getMessage()));
     }
+}
     
     /**
      * PUT /api/purchase-orders/{id}
@@ -375,7 +475,110 @@ public class PurchaseOrderController {
                     .body(createErrorResponse(e.getMessage()));
         }
     }
-    
+ // ============================================
+ // ADD TO PurchaseOrderController.java
+ // ============================================
+    /**
+     * GET /api/purchase-orders/{id}/items-for-bill
+     * Get PO items with pending delivery quantities
+     */
+    @GetMapping("/{id}/items-for-bill")
+    public ResponseEntity<?> getPurchaseOrderItemsForBill(@PathVariable Long id) {
+        try {
+            PurchaseOrderEntity po = purchaseOrderService.getPurchaseOrderById(id);
+            
+            // Get items with pending delivery (pending_qty > 0)
+            List<PurchaseOrderItemEntity> items = purchaseOrderItemRepository
+                    .findByPurchaseOrderId(id)
+                    .stream()
+                    .filter(item -> item.getPendingQty() != null && 
+                                   item.getPendingQty().compareTo(BigDecimal.ZERO) > 0)
+                    .collect(Collectors.toList());
+            
+            if (items.isEmpty()) {
+                return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "All items for this PO have been fully delivered",
+                    "poNo", po.getPoNo(),
+                    "items", List.of()
+                ));
+            }
+            
+            // Convert to response format
+            List<Map<String, Object>> itemsList = items.stream()
+                .map(item -> {
+                    Map<String, Object> itemMap = new LinkedHashMap<>();
+                    itemMap.put("id", item.getId());
+                    itemMap.put("lineNo", item.getLineNo());
+                    itemMap.put("itemSku", item.getItemSku());
+                    itemMap.put("itemName", item.getItemName());
+                    itemMap.put("description", item.getDescription());
+                    itemMap.put("orderedQty", item.getQuantity());
+                    itemMap.put("deliveredQty", item.getDeliveredQty());
+                    itemMap.put("pendingQty", item.getPendingQty());
+                    itemMap.put("maxBillableQty", item.getPendingQty()); // Max = pending
+                    itemMap.put("unitPrice", item.getUnitPrice());
+                    itemMap.put("taxPercent", item.getTaxPercent());
+                    itemMap.put("deliveryStatus", getDeliveryStatus(item));
+                    return itemMap;
+                })
+                .collect(Collectors.toList());
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("poNo", po.getPoNo());
+            response.put("vendorName", po.getVendorDisplayName());
+            response.put("items", itemsList);
+            response.put("totalItems", itemsList.size());
+            
+            return ResponseEntity.ok(response);
+            
+        } catch (Exception e) {
+            log.error("Error fetching PO items for bill: {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage(), "success", false));
+        }
+    }
+
+    private String getDeliveryStatus(PurchaseOrderItemEntity item) {
+        if (item.getDeliveredQty().compareTo(BigDecimal.ZERO) == 0) {
+            return "Not Delivered";
+        } else if (item.getPendingQty().compareTo(BigDecimal.ZERO) == 0) {
+            return "Fully Delivered";
+        } else {
+            return "Partially Delivered";
+        }
+    }
+ /**
+  * GET /api/purchase-orders/by-vendor
+  * Get POs by vendor (supports both vendorId and vendorName)
+  * Filtered by project
+  */
+ @GetMapping("/by-vendor")
+ public ResponseEntity<?> getPurchaseOrdersByVendor(
+         @RequestParam(required = false) Long vendorId,
+         @RequestParam(required = false) String vendorName,
+         @RequestParam(required = false) String projectId,
+         @RequestParam(required = false) String groupName,
+         @RequestParam(required = false) String subGroupName,
+         HttpServletRequest request
+ ) {
+     try {
+         log.info("Fetching POs - vendorId: {}, vendorName: {}, projectId: {}", 
+                  vendorId, vendorName, projectId);
+         
+         List<Map<String, Object>> pos = purchaseOrderService.getPurchaseOrdersByVendor1(
+             vendorId, vendorName, groupName, subGroupName, projectId
+         );
+         
+         return ResponseEntity.ok(pos);
+         
+     } catch (Exception e) {
+         log.error("Error fetching POs by vendor", e);
+         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                 .body(Map.of("error", e.getMessage()));
+     }
+ }
     /**
      * GET /api/purchase-orders/stats
      * Get purchase order statistics with project filtering

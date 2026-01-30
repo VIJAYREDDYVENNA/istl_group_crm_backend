@@ -1,7 +1,9 @@
 package com.istlgroup.istl_group_crm_backend.service;
 
+import com.istlgroup.istl_group_crm_backend.entity.PurchaseOrderEntity;
 import com.istlgroup.istl_group_crm_backend.entity.QuotationEntity;
 import com.istlgroup.istl_group_crm_backend.entity.VendorEntity;
+import com.istlgroup.istl_group_crm_backend.repo.PurchaseOrderRepository;
 import com.istlgroup.istl_group_crm_backend.repo.QuotationRepository;
 import com.istlgroup.istl_group_crm_backend.repo.VendorRepository;
 import lombok.RequiredArgsConstructor;
@@ -15,8 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -25,7 +32,7 @@ public class VendorService {
     
     private final VendorRepository vendorRepository;
     private final QuotationRepository quotationRepository;
-    
+    private final PurchaseOrderRepository purchaseOrderRepository;
     /**
      * Get vendors with role-based and project-based filtering + category + status
      */
@@ -139,7 +146,84 @@ public class VendorService {
         
         return savedVendor.getId();
     }
-    
+ // ============================================
+ // ADD TO VendorService.java
+ // ============================================
+
+ /**
+  * Get vendors for bills page
+  * Combines vendors from vendors table + new vendors from POs
+  * Filtered by project and deduplicated
+  */
+ public List<Map<String, Object>> getVendorsForBills(
+         String groupName, 
+         String subGroupName, 
+         String projectId
+ ) {
+     Set<Map<String, Object>> vendorSet = new HashSet<>();
+     
+     // 1. Get vendors from vendors table (filtered by project)
+     List<VendorEntity> vendorsFromTable;
+     if (projectId != null && !projectId.isEmpty()) {
+         vendorsFromTable = vendorRepository.findByProjectId(projectId);
+     } else if (subGroupName != null && !subGroupName.isEmpty()) {
+         vendorsFromTable = vendorRepository.findByGroupNameAndSubGroupName(groupName, subGroupName);
+     } else if (groupName != null && !groupName.isEmpty()) {
+         vendorsFromTable = vendorRepository.findByGroupName(groupName);
+     } else {
+         vendorsFromTable = vendorRepository.findAll();
+     }
+     
+     // Add vendors from vendors table
+     for (VendorEntity vendor : vendorsFromTable) {
+         Map<String, Object> vendorMap = new LinkedHashMap<>();
+         vendorMap.put("id", vendor.getId());
+         vendorMap.put("name", vendor.getName());
+         vendorMap.put("contact", vendor.getPhone());
+         vendorMap.put("source", "vendors_table");
+         vendorSet.add(vendorMap);
+     }
+     
+     // 2. Get new vendors from POs (vendors created inline with PO)
+     List<PurchaseOrderEntity> pos;
+     if (projectId != null && !projectId.isEmpty()) {
+         pos = purchaseOrderRepository.findByProjectId(projectId);
+     } else if (subGroupName != null && !subGroupName.isEmpty()) {
+         pos = purchaseOrderRepository.findByGroupNameAndSubGroupName(groupName, subGroupName);
+     } else if (groupName != null && !groupName.isEmpty()) {
+         pos = purchaseOrderRepository.findByGroupName(groupName);
+     } else {
+         pos = purchaseOrderRepository.findAll();
+     }
+     
+     // Add vendors from POs (new vendors with vendor_name and vendor_contact)
+     for (PurchaseOrderEntity po : pos) {
+         if (po.getVendorName() != null && !po.getVendorName().trim().isEmpty()) {
+             // This is a new vendor created with PO
+             Map<String, Object> vendorMap = new LinkedHashMap<>();
+             vendorMap.put("id", "PO_" + po.getVendorName()); // Use vendor name as ID
+             vendorMap.put("name", po.getVendorName());
+             vendorMap.put("contact", po.getVendorContact());
+             vendorMap.put("source", "po_vendor");
+             vendorMap.put("poId", po.getId());
+             
+             // Check if not already added (avoid duplicates by name)
+             boolean exists = vendorSet.stream()
+                 .anyMatch(v -> v.get("name").toString().equalsIgnoreCase(po.getVendorName()));
+             
+             if (!exists) {
+                 vendorSet.add(vendorMap);
+             }
+         }
+     }
+     
+     // Convert to list and sort by name
+     List<Map<String, Object>> result = new ArrayList<>(vendorSet);
+     result.sort((v1, v2) -> v1.get("name").toString().compareTo(v2.get("name").toString()));
+     
+     log.info("Found {} vendors for bills (including PO vendors)", result.size());
+     return result;
+ }
     /**
      * Create new vendor manually
      */
@@ -349,4 +433,41 @@ public class VendorService {
         return vendorRepository.findVendorsWithQuotationHistoryForDropdown(userId, currentProjectId);
     }
     */
+    
+ // ADD TO VendorService.java
+
+    /**
+     * Get vendors filtered by group and subgroup
+     * Used by Quotations module to show only relevant vendors
+     */
+    @Transactional(readOnly = true)
+    public List<VendorEntity> getVendorsByGroupAndSubGroup(String groupName, String subGroupName) {
+        try {
+            log.info("Fetching vendors - group: {}, subGroup: {}", groupName, subGroupName);
+            
+            // Get all active vendors
+            List<VendorEntity> vendors = vendorRepository.findByDeletedAtIsNull();
+            
+            // Filter by group if provided
+            if (groupName != null && !groupName.trim().isEmpty()) {
+                vendors = vendors.stream()
+                        .filter(v -> groupName.equals(v.getGroupName()))
+                        .collect(Collectors.toList());
+            }
+            
+            // Filter by subgroup if provided
+            if (subGroupName != null && !subGroupName.trim().isEmpty()) {
+                vendors = vendors.stream()
+                        .filter(v -> subGroupName.equals(v.getSubGroupName()))
+                        .collect(Collectors.toList());
+            }
+            
+            log.info("Found {} vendors for group: {}, subGroup: {}", vendors.size(), groupName, subGroupName);
+            return vendors;
+            
+        } catch (Exception e) {
+            log.error("Error fetching vendors by group/subgroup", e);
+            return new ArrayList<>();
+        }
+    }
 }
