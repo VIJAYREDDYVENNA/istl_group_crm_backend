@@ -253,6 +253,15 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrderEnti
     	    @Param("status") String status,
     	    Pageable pageable
     	);
+     
+     @Query("SELECT p FROM PurchaseOrderEntity p WHERE p.projectId = :projectId " +
+  	       "AND p.status = :status AND p.deletedAt IS NULL " +
+  	       "ORDER BY p.orderDate DESC")
+  	List<PurchaseOrderEntity> findByProjectIdAndStatus(
+  	    @Param("projectId") String projectId,
+  	    @Param("status") String status
+  	    
+  	);
      /**
       * Find by group and status (Admin)
       */
