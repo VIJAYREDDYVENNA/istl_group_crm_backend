@@ -35,61 +35,169 @@ public class PurchaseOrderService {
     private final QuotationItemRepository quotationItemRepository;
     private final VendorRepository vendorRepository;
     
-    /**
-     * Get purchase orders with role-based and project-based filtering
-     */
-    @Transactional(readOnly = true)
-    public Page<PurchaseOrderEntity> getPurchaseOrders(
-            String groupName,
-            String subGroupName,
-            String projectId,
-            String status,
-            String searchTerm,
-            Long userId,
-            String userRole,
-            int page,
-            int size,
-            String sortBy,
-            String sortDirection
-    ) {
-        Pageable pageable = PageRequest.of(
-                page, 
-                size, 
-                Sort.by(Sort.Direction.fromString(sortDirection), sortBy)
-        );
-        
-        boolean isAdmin = isAdmin(userRole);
-        
-        // Search takes priority
-        if (searchTerm != null && !searchTerm.trim().isEmpty()) {
-            return purchaseOrderRepository.search(searchTerm, pageable);
-        }
-        
-        // Project-based filtering
-        if (isAdmin) {
-            if (projectId != null && !projectId.isEmpty()) {
-                return purchaseOrderRepository.findByProjectId(projectId, pageable);
-            }
-            if (subGroupName != null && !subGroupName.isEmpty()) {
-                return purchaseOrderRepository.findByGroupAndSubGroup(groupName, subGroupName, pageable);
-            }
-            if (groupName != null && !groupName.isEmpty()) {
-                return purchaseOrderRepository.findByGroupName(groupName, pageable);
-            }
-            return purchaseOrderRepository.findAllActive(pageable);
-        } else {
-            if (projectId != null && !projectId.isEmpty()) {
-                return purchaseOrderRepository.findByProjectIdAndUserAccess(projectId, userId, pageable);
-            }
-            if (subGroupName != null && !subGroupName.isEmpty()) {
-                return purchaseOrderRepository.findByGroupSubGroupAndUserAccess(groupName, subGroupName, userId, pageable);
-            }
-            if (groupName != null && !groupName.isEmpty()) {
-                return purchaseOrderRepository.findByGroupNameAndUserAccess(groupName, userId, pageable);
-            }
-            return purchaseOrderRepository.findByUserAccess(userId, pageable);
-        }
+
+/**
+ * ✅ UPDATED: Get purchase orders with PAYMENT STATUS filter support
+ */
+@Transactional(readOnly = true)
+public Page<PurchaseOrderEntity> getPurchaseOrders(
+        String groupName,
+        String subGroupName,
+        String projectId,
+        String status,
+        String paymentStatus, // ✅ ADDED parameter
+        String searchTerm,
+        Long userId,
+        String userRole,
+        int page,
+        int size,
+        String sortBy,
+        String sortDirection
+) {
+    Pageable pageable = PageRequest.of(
+            page, 
+            size, 
+            Sort.by(Sort.Direction.fromString(sortDirection), sortBy)
+    );
+    
+    boolean isAdmin = isAdmin(userRole);
+    
+    // Search takes priority
+    if (searchTerm != null && !searchTerm.trim().isEmpty()) {
+        return purchaseOrderRepository.search(searchTerm, pageable);
     }
+    
+    // ✅ NEW: Combined filtering logic
+    if (isAdmin) {
+        // Handle combined filters
+        if (paymentStatus != null && !paymentStatus.isEmpty()) {
+            // Payment status + other filters
+            if (projectId != null && !projectId.isEmpty()) {
+                if (status != null && !status.isEmpty()) {
+                    // Project + Status + Payment
+                    return purchaseOrderRepository.findByProjectIdAndStatusAndPaymentStatus(
+                        projectId, status, paymentStatus, pageable
+                    );
+                }
+                // Project + Payment
+                return purchaseOrderRepository.findByProjectIdAndPaymentStatus(
+                    projectId, paymentStatus, pageable
+                );
+            }
+            
+            if (subGroupName != null && !subGroupName.isEmpty()) {
+                if (status != null && !status.isEmpty()) {
+                    // Group + SubGroup + Status + Payment
+                    return purchaseOrderRepository.findByGroupSubGroupStatusAndPayment(
+                        groupName, subGroupName, status, paymentStatus, pageable
+                    );
+                }
+                // Group + SubGroup + Payment
+                return purchaseOrderRepository.findByGroupSubGroupAndPayment(
+                    groupName, subGroupName, paymentStatus, pageable
+                );
+            }
+            
+            if (groupName != null && !groupName.isEmpty()) {
+                if (status != null && !status.isEmpty()) {
+                    // Group + Status + Payment
+                    return purchaseOrderRepository.findByGroupStatusAndPayment(
+                        groupName, status, paymentStatus, pageable
+                    );
+                }
+                // Group + Payment
+                return purchaseOrderRepository.findByGroupAndPayment(
+                    groupName, paymentStatus, pageable
+                );
+            }
+            
+            if (status != null && !status.isEmpty()) {
+                // Status + Payment only
+                return purchaseOrderRepository.findByStatusAndPaymentStatus(
+                    status, paymentStatus, pageable
+                );
+            }
+            
+            // Payment status only
+            return purchaseOrderRepository.findByPaymentStatus(paymentStatus, pageable);
+        }
+        
+        // Existing logic for other filters (without payment status)
+        if (projectId != null && !projectId.isEmpty()) {
+            if (status != null && !status.isEmpty()) {
+                return purchaseOrderRepository.findByProjectIdAndStatus(projectId, status, pageable);
+            }
+            return purchaseOrderRepository.findByProjectId(projectId, pageable);
+        }
+        
+        if (subGroupName != null && !subGroupName.isEmpty()) {
+            if (status != null && !status.isEmpty()) {
+                return purchaseOrderRepository.findByGroupSubGroupAndStatus(
+                    groupName, subGroupName, status, pageable
+                );
+            }
+            return purchaseOrderRepository.findByGroupAndSubGroup(groupName, subGroupName, pageable);
+        }
+        
+        if (groupName != null && !groupName.isEmpty()) {
+            if (status != null && !status.isEmpty()) {
+                return purchaseOrderRepository.findByGroupAndStatus(groupName, status, pageable);
+            }
+            return purchaseOrderRepository.findByGroupName(groupName, pageable);
+        }
+        
+        if (status != null && !status.isEmpty()) {
+            return purchaseOrderRepository.findByStatus(status, pageable);
+        }
+        
+        return purchaseOrderRepository.findAllActive(pageable);
+        
+    } else {
+        // Non-admin with user access filtering
+        if (paymentStatus != null && !paymentStatus.isEmpty()) {
+            if (projectId != null && !projectId.isEmpty()) {
+                if (status != null && !status.isEmpty()) {
+                    return purchaseOrderRepository.findByProjectIdStatusPaymentAndUserAccess(
+                        projectId, status, paymentStatus, userId, pageable
+                    );
+                }
+                return purchaseOrderRepository.findByProjectIdPaymentAndUserAccess(
+                    projectId, paymentStatus, userId, pageable
+                );
+            }
+            
+            if (subGroupName != null && !subGroupName.isEmpty()) {
+                return purchaseOrderRepository.findByGroupSubGroupPaymentAndUserAccess(
+                    groupName, subGroupName, paymentStatus, userId, pageable
+                );
+            }
+            
+            if (groupName != null && !groupName.isEmpty()) {
+                return purchaseOrderRepository.findByGroupPaymentAndUserAccess(
+                    groupName, paymentStatus, userId, pageable
+                );
+            }
+            
+            return purchaseOrderRepository.findByPaymentStatusAndUserAccess(
+                paymentStatus, userId, pageable
+            );
+        }
+        
+        // Existing non-admin logic (without payment status)
+        if (projectId != null && !projectId.isEmpty()) {
+            return purchaseOrderRepository.findByProjectIdAndUserAccess(projectId, userId, pageable);
+        }
+        if (subGroupName != null && !subGroupName.isEmpty()) {
+            return purchaseOrderRepository.findByGroupSubGroupAndUserAccess(
+                groupName, subGroupName, userId, pageable
+            );
+        }
+        if (groupName != null && !groupName.isEmpty()) {
+            return purchaseOrderRepository.findByGroupNameAndUserAccess(groupName, userId, pageable);
+        }
+        return purchaseOrderRepository.findByUserAccess(userId, pageable);
+    }
+}
     
     /**
      * Get PO by ID
@@ -692,7 +800,7 @@ public class PurchaseOrderService {
         boolean isAdmin = isAdmin(userRole);
         
         Page<PurchaseOrderEntity> allPOs = getPurchaseOrders(
-                groupName, subGroupName, projectId, null, null,
+                groupName, subGroupName, projectId, null, null,null,
                 userId, userRole, 0, Integer.MAX_VALUE, "orderDate", "DESC"
         );
         

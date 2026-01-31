@@ -40,41 +40,48 @@ public class PurchaseOrderController {
      */
     @GetMapping
     public ResponseEntity<?> getPurchaseOrders(
-            @RequestParam(required = false) String groupName,
-            @RequestParam(required = false) String subGroupName,
-            @RequestParam(required = false) String projectId,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) String searchTerm,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "orderDate") String sortBy,
-            @RequestParam(defaultValue = "DESC") String sortDirection,
-            HttpServletRequest request
-    ) {
-        try {
-            Long userId = getUserIdFromRequest(request);
-            String userRole = getUserRoleFromRequest(request);
-            
-            Page<PurchaseOrderEntity> purchaseOrders = purchaseOrderService.getPurchaseOrders(
-                    groupName, subGroupName, projectId, status, searchTerm,
-                    userId, userRole, page, size, sortBy, sortDirection
-            );
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("purchaseOrders", purchaseOrders.getContent());
-            response.put("currentPage", purchaseOrders.getNumber());
-            response.put("totalPages", purchaseOrders.getTotalPages());
-            response.put("totalElements", purchaseOrders.getTotalElements());
-            response.put("pageSize", purchaseOrders.getSize());
-            
-            return ResponseEntity.ok(response);
-            
-        } catch (Exception e) {
-            log.error("Error fetching purchase orders", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(createErrorResponse(e.getMessage()));
-        }
+        @RequestParam(required = false) String groupName,
+        @RequestParam(required = false) String subGroupName,
+        @RequestParam(required = false) String projectId,
+        @RequestParam(required = false) String status,
+        @RequestParam(required = false) String paymentStatus, // ✅ ADD THIS LINE
+        @RequestParam(required = false) String searchTerm,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "10") int size,
+        @RequestParam(defaultValue = "orderDate") String sortBy,
+        @RequestParam(defaultValue = "DESC") String sortDirection,
+        @RequestHeader(value = "X-User-Id", required = false) Long userId,
+        @RequestHeader(value = "X-User-Role", required = false) String userRole
+) {
+    try {
+        Page<PurchaseOrderEntity> pos = purchaseOrderService.getPurchaseOrders(
+            groupName,
+            subGroupName,
+            projectId,
+            status,
+            paymentStatus, // ✅ ADD THIS LINE (pass to service)
+            searchTerm,
+            userId,
+            userRole,
+            page,
+            size,
+            sortBy,
+            sortDirection
+        );
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("purchaseOrders", pos.getContent());
+        response.put("currentPage", pos.getNumber());
+        response.put("totalPages", pos.getTotalPages());
+        response.put("totalElements", pos.getTotalElements());
+
+        return ResponseEntity.ok(response);
+    } catch (Exception e) {
+        return ResponseEntity.badRequest().body(
+            Map.of("error", e.getMessage())
+        );
     }
+}
     
     /**
      * GET /api/purchase-orders/{id}
