@@ -73,8 +73,15 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrderEnti
     
     // ========== Status-based Queries ==========
     
-    @Query("SELECT po FROM PurchaseOrderEntity po WHERE po.status = :status AND po.deletedAt IS NULL")
-    List<PurchaseOrderEntity> findByStatus(@Param("status") String status);
+    /**
+     * Find by status only (Admin)
+     */
+    @Query("SELECT p FROM PurchaseOrderEntity p WHERE p.status = :status " +
+    	       "AND p.deletedAt IS NULL ORDER BY p.orderDate DESC")
+    	Page<PurchaseOrderEntity> findByStatus(
+    	    @Param("status") String status,
+    	    Pageable pageable
+    	);
     
     // ========== Vendor-based Queries ==========
     
@@ -105,8 +112,23 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrderEnti
     Double getTotalPOValue();
     
     
-    
-    
+    @Query("SELECT p FROM PurchaseOrderEntity p " +
+    	       "WHERE p.paymentStatus = :paymentStatus AND p.deletedAt IS NULL " +
+    	       "AND p.createdBy = :userId ORDER BY p.orderDate DESC")
+    	Page<PurchaseOrderEntity> findByPaymentStatusAndUserAccess(
+    	    @Param("paymentStatus") String paymentStatus,
+    	    @Param("userId") Long userId,
+    	    Pageable pageable
+    	);
+    @Query("SELECT p FROM PurchaseOrderEntity p " +
+    	       "WHERE p.projectId = :projectId AND p.paymentStatus = :paymentStatus " +
+    	       "AND p.deletedAt IS NULL AND p.createdBy = :userId ORDER BY p.orderDate DESC")
+    	Page<PurchaseOrderEntity> findByProjectIdPaymentAndUserAccess(
+    	    @Param("projectId") String projectId,
+    	    @Param("paymentStatus") String paymentStatus,
+    	    @Param("userId") Long userId,
+    	    Pageable pageable
+    	);
     /**
      * Get dropdown list of POs with vendor names
      */
@@ -220,15 +242,40 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrderEnti
             "WHERE po.vendorId = :vendorId AND po.deletedAt IS NULL")
      Long countByVendorId(@Param("vendorId") Long vendorId);
 
-     @Query("SELECT po FROM PurchaseOrderEntity po " +
-    	       "WHERE po.projectId = :projectId " +
-    	       "AND po.status = :status " +
-    	       "AND po.deletedAt IS NULL")
-    	List<PurchaseOrderEntity> findByProjectIdAndStatus(
-    	    @Param("projectId") String projectId, 
-    	    @Param("status") String status
+     /**
+      * Find by projectId and status (Admin)
+      */
+     @Query("SELECT p FROM PurchaseOrderEntity p WHERE p.projectId = :projectId " +
+    	       "AND p.status = :status AND p.deletedAt IS NULL " +
+    	       "ORDER BY p.orderDate DESC")
+    	Page<PurchaseOrderEntity> findByProjectIdAndStatus(
+    	    @Param("projectId") String projectId,
+    	    @Param("status") String status,
+    	    Pageable pageable
     	);
-
+     /**
+      * Find by group and status (Admin)
+      */
+     @Query("SELECT p FROM PurchaseOrderEntity p WHERE p.groupName = :groupName " +
+    	       "AND p.status = :status AND p.deletedAt IS NULL " +
+    	       "ORDER BY p.orderDate DESC")
+    	Page<PurchaseOrderEntity> findByGroupAndStatus(
+    	    @Param("groupName") String groupName,
+    	    @Param("status") String status,
+    	    Pageable pageable
+    	);
+     /**
+      * Find by group, subgroup and status (Admin)
+      */
+     @Query("SELECT p FROM PurchaseOrderEntity p WHERE p.groupName = :groupName " +
+    	       "AND p.subGroupName = :subGroupName AND p.status = :status " +
+    	       "AND p.deletedAt IS NULL ORDER BY p.orderDate DESC")
+    	Page<PurchaseOrderEntity> findByGroupSubGroupAndStatus(
+    	    @Param("groupName") String groupName,
+    	    @Param("subGroupName") String subGroupName,
+    	    @Param("status") String status,
+    	    Pageable pageable
+    	);
 	 List<PurchaseOrderEntity> findByProjectId(String projectId);
 
 	 List<PurchaseOrderEntity> findByGroupNameAndSubGroupName(String groupName, String subGroupName);
@@ -264,6 +311,128 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrderEnti
 	     @Param("projectId") String projectId
 	 );
 
+	 /**
+	     * Find by projectId AND payment status (Admin)
+	     */
+	 @Query("SELECT p FROM PurchaseOrderEntity p WHERE p.projectId = :projectId " +
+		       "AND p.paymentStatus = :paymentStatus AND p.deletedAt IS NULL " +
+		       "ORDER BY p.orderDate DESC")
+		Page<PurchaseOrderEntity> findByProjectIdAndPaymentStatus(
+		    @Param("projectId") String projectId,
+		    @Param("paymentStatus") String paymentStatus,
+		    Pageable pageable
+		);
+	 @Query("SELECT p FROM PurchaseOrderEntity p WHERE p.projectId = :projectId " +
+		       "AND p.status = :status AND p.paymentStatus = :paymentStatus " +
+		       "AND p.deletedAt IS NULL ORDER BY p.orderDate DESC")
+		Page<PurchaseOrderEntity> findByProjectIdAndStatusAndPaymentStatus(
+		    @Param("projectId") String projectId,
+		    @Param("status") String status,
+		    @Param("paymentStatus") String paymentStatus,
+		    Pageable pageable
+		);
+	 @Query("SELECT p FROM PurchaseOrderEntity p WHERE p.groupName = :groupName " +
+		       "AND p.status = :status AND p.paymentStatus = :paymentStatus " +
+		       "AND p.deletedAt IS NULL ORDER BY p.orderDate DESC")
+		Page<PurchaseOrderEntity> findByGroupStatusAndPayment(
+		    @Param("groupName") String groupName,
+		    @Param("status") String status,
+		    @Param("paymentStatus") String paymentStatus,
+		    Pageable pageable
+		);
+
+		@Query("SELECT p FROM PurchaseOrderEntity p WHERE p.groupName = :groupName " +
+		       "AND p.subGroupName = :subGroupName AND p.paymentStatus = :paymentStatus " +
+		       "AND p.deletedAt IS NULL ORDER BY p.orderDate DESC")
+		Page<PurchaseOrderEntity> findByGroupSubGroupAndPayment(
+		    @Param("groupName") String groupName,
+		    @Param("subGroupName") String subGroupName,
+		    @Param("paymentStatus") String paymentStatus,
+		    Pageable pageable
+		);
+
+		@Query("SELECT p FROM PurchaseOrderEntity p WHERE p.groupName = :groupName " +
+		       "AND p.subGroupName = :subGroupName AND p.status = :status " +
+		       "AND p.paymentStatus = :paymentStatus AND p.deletedAt IS NULL " +
+		       "ORDER BY p.orderDate DESC")
+		Page<PurchaseOrderEntity> findByGroupSubGroupStatusAndPayment(
+		    @Param("groupName") String groupName,
+		    @Param("subGroupName") String subGroupName,
+		    @Param("status") String status,
+		    @Param("paymentStatus") String paymentStatus,
+		    Pageable pageable
+		);
+	 @Query("SELECT p FROM PurchaseOrderEntity p WHERE p.groupName = :groupName " +
+		       "AND p.paymentStatus = :paymentStatus AND p.deletedAt IS NULL " +
+		       "ORDER BY p.orderDate DESC")
+		Page<PurchaseOrderEntity> findByGroupAndPayment(
+		    @Param("groupName") String groupName,
+		    @Param("paymentStatus") String paymentStatus,
+		    Pageable pageable
+		);
+	    /**
+	     * Find by projectId, status, payment with user access (Non-admin)
+	     */
+	 @Query("SELECT p FROM PurchaseOrderEntity p " +
+		       "WHERE p.projectId = :projectId AND p.status = :status " +
+		       "AND p.paymentStatus = :paymentStatus AND p.deletedAt IS NULL " +
+		       "AND p.createdBy = :userId ORDER BY p.orderDate DESC")
+		Page<PurchaseOrderEntity> findByProjectIdStatusPaymentAndUserAccess(
+		    @Param("projectId") String projectId,
+		    @Param("status") String status,
+		    @Param("paymentStatus") String paymentStatus,
+		    @Param("userId") Long userId,
+		    Pageable pageable
+		);
+	    /**
+	     * Find by group, payment with user access (Non-admin)
+	     */
+	 @Query("SELECT p FROM PurchaseOrderEntity p " +
+		       "WHERE p.groupName = :groupName AND p.paymentStatus = :paymentStatus " +
+		       "AND p.deletedAt IS NULL AND p.createdBy = :userId ORDER BY p.orderDate DESC")
+		Page<PurchaseOrderEntity> findByGroupPaymentAndUserAccess(
+		    @Param("groupName") String groupName,
+		    @Param("paymentStatus") String paymentStatus,
+		    @Param("userId") Long userId,
+		    Pageable pageable
+		);
+	    /**
+	     * Find by group, subgroup, payment with user access (Non-admin)
+	     */
+	 @Query("SELECT p FROM PurchaseOrderEntity p " +
+		       "WHERE p.groupName = :groupName AND p.subGroupName = :subGroupName " +
+		       "AND p.paymentStatus = :paymentStatus AND p.deletedAt IS NULL " +
+		       "AND p.createdBy = :userId ORDER BY p.orderDate DESC")
+		Page<PurchaseOrderEntity> findByGroupSubGroupPaymentAndUserAccess(
+		    @Param("groupName") String groupName,
+		    @Param("subGroupName") String subGroupName,
+		    @Param("paymentStatus") String paymentStatus,
+		    @Param("userId") Long userId,
+		    Pageable pageable
+		);
+	    
+	 /**
+	     * Find by status AND payment status (Admin)
+	     */
+	    @Query("SELECT p FROM PurchaseOrderEntity p WHERE p.status = :status " +
+	    	       "AND p.paymentStatus = :paymentStatus AND p.deletedAt IS NULL " +
+	    	       "ORDER BY p.orderDate DESC")
+	    	Page<PurchaseOrderEntity> findByStatusAndPaymentStatus(
+	    	    @Param("status") String status,
+	    	    @Param("paymentStatus") String paymentStatus,
+	    	    Pageable pageable
+	    	);
+	 /**
+	     * Find by payment status only (Admin)
+	     */
+	    @Query("SELECT p FROM PurchaseOrderEntity p WHERE p.paymentStatus = :paymentStatus " +
+	    	       "AND p.deletedAt IS NULL ORDER BY p.orderDate DESC")
+	    	Page<PurchaseOrderEntity> findByPaymentStatus(
+	    	    @Param("paymentStatus") String paymentStatus, 
+	    	    Pageable pageable
+	    	);
+	    
+	    
 	 @Modifying
 	 @Transactional
 	 @Query("""
