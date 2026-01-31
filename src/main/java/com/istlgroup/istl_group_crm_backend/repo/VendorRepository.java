@@ -294,4 +294,6 @@ public interface VendorRepository extends JpaRepository<VendorEntity, Long> {
 	List<VendorEntity> findByGroupName(String groupName);
 	Optional<VendorEntity> findByName(String name);
 
+	Optional<VendorEntity> findByPhone(String vendorContact);
+
 }

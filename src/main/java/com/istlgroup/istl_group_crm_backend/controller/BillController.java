@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.istlgroup.istl_group_crm_backend.entity.VendorEntity;
+import com.istlgroup.istl_group_crm_backend.repo.PurchaseOrderRepository;
 import com.istlgroup.istl_group_crm_backend.repo.VendorRepository;
 import com.istlgroup.istl_group_crm_backend.service.BillService;
 import com.istlgroup.istl_group_crm_backend.wrapperClasses.BillDTO;
@@ -31,6 +32,7 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @RestController
@@ -41,7 +43,8 @@ public class BillController {
     
 	 private final BillService billService;
 	    private final VendorRepository vendorRepository;
-    
+	    private  VendorEntity vendorEntity;
+	    private PurchaseOrderRepository purchaseOrderRepository;
     /**
      * Get all bills with role-based filtering
      * GET /api/bills
@@ -182,8 +185,18 @@ public class BillController {
                             newVendor.setTotalOrders(0);
                             newVendor.setTotalPurchaseValue(BigDecimal.ZERO);
                             newVendor.setCreatedBy(userId);
+                            vendorEntity = vendorRepository.save(newVendor);
+                            System.err.println(vendorEntity.getId());
+                            Long vendorId = vendorEntity.getId();
+                            String name = vendorEntity.getName();
+                            String contactNumber = vendorEntity.getPhone();
+                            String projectId = vendorEntity.getProjectId();
+                            System.err.println(name+" "+contactNumber+" "+projectId);
+                            int updatedRows = purchaseOrderRepository.updateVendorIdForPO(
+                                    vendorId, vendorName, contactNumber, projectId
+                            );
                             
-                            return vendorRepository.save(newVendor);
+                            return vendorEntity;
                         });
                 
                 actualVendorId = vendor.getId();

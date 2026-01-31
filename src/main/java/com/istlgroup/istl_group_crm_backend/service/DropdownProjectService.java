@@ -8,8 +8,11 @@ import com.istlgroup.istl_group_crm_backend.entity.LeadsEntity;
 import com.istlgroup.istl_group_crm_backend.repo.CustomersRepo;
 import com.istlgroup.istl_group_crm_backend.repo.DropdownProjectRepository;
 import com.istlgroup.istl_group_crm_backend.repo.DropdownSubGroupRepository;
+import com.istlgroup.istl_group_crm_backend.repo.ProposalsRepo;
+
 import lombok.RequiredArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -25,7 +28,8 @@ public class DropdownProjectService {
     private final DropdownSubGroupRepository subGroupRepository;
     @Autowired
     private CustomersRepo customersRepo;
-    
+    @Autowired
+    private ProposalsRepo proposalsRepo;
     
     @Transactional
     public DropdownProjectEntity createProject(DropdownProjectEntity project, Long subGroupId, Long userId) {
@@ -133,6 +137,8 @@ public class DropdownProjectService {
         projectEntity.setProjectName(Lead.getName());
         projectEntity.setDescription(Lead.getEnquiry());
         projectEntity.setCreatedAt(Lead.getCreatedAt());
+        BigDecimal budget = getBudgetFromProposal(Lead.getId()); 
+        projectEntity.setBudget(budget);
         DropdownSubGroupEntity subGroup =
                 subGroupRepository.findBysubGroupName(Lead.getSubGroupName())
                 .orElseThrow(() -> new RuntimeException("Sub group not found"));
@@ -146,7 +152,12 @@ public class DropdownProjectService {
         DropdownProjectEntity ent = projectRepository.save(projectEntity);
         return  ent;
     }
-    public DropdownProjectEntity createProjectFromCustomers(CustomersEntity customers) {
+    private BigDecimal getBudgetFromProposal(Long id) {
+        return proposalsRepo.getBudgetByLeadId(id);
+    }
+
+
+	public DropdownProjectEntity createProjectFromCustomers(CustomersEntity customers) {
         // TODO Auto-generated method stub
         DropdownProjectEntity projectEntity = new DropdownProjectEntity();
         projectEntity.setCustomerCode(customers.getCustomerCode());
