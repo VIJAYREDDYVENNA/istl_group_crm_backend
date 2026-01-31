@@ -1,6 +1,9 @@
 package com.istlgroup.istl_group_crm_backend.repo;
 
 import com.istlgroup.istl_group_crm_backend.entity.PurchaseOrderEntity;
+
+import jakarta.transaction.Transactional;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -260,7 +263,25 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrderEnti
 	     @Param("vendorName") String vendorName,
 	     @Param("projectId") String projectId
 	 );
-	 
+
+	 @Modifying
+	 @Transactional
+	 @Query("""
+	     UPDATE PurchaseOrderEntity po
+	     SET po.vendorId = :vendorId
+	     WHERE po.vendorName = :vendorName
+	       AND po.vendorContact = :contactNumber
+	       AND po.vendorId IS NULL
+	       AND po.projectId = :projectId
+	       AND po.deletedAt IS NULL
+	 """)
+	 int updateVendorIdForPO(
+	         @Param("vendorId") Long vendorId,
+	         @Param("vendorName") String vendorName,
+	         @Param("contactNumber") String contactNumber,
+	         @Param("projectId") String projectId
+	 );
+
 }
 
 

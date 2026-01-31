@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -100,337 +101,323 @@ public class PurchaseOrderService {
     }
     
     /**
- * Create PO from quotation with custom data - UPDATED to support new vendors
- */
-@Transactional
-public PurchaseOrderEntity createPOFromQuotationWithCustomData(
-        Long quotationId,
-        Long userId,
-        Long vendorId,
-        String vendorName,
-        String vendorContact,
-        String groupName,
-        String subGroupName,
-        String projectId,
-        String rfqId,
-        String orderDateStr,
-        String expectedDeliveryStr,
-        String paymentTerms,
-        String shippingAddress,
-        String notes,
-        List<Map<String, Object>> itemsData
-) {
-    try {
-        log.info("Creating PO from quotation {} with custom data", quotationId);
-        
-        // Get quotation
-        QuotationEntity quotation = quotationRepository.findById(quotationId)
-                .orElseThrow(() -> new RuntimeException("Quotation not found"));
-        
-        if (!"Approved".equals(quotation.getStatus())) {
-            throw new RuntimeException("Only approved quotations can be converted to PO");
-        }
-        
-        // Parse dates
-        LocalDate orderDate = LocalDate.parse(orderDateStr);
-        LocalDate expectedDelivery = LocalDate.parse(expectedDeliveryStr);
-        
-        // Create PO WITHOUT items first
-        PurchaseOrderEntity po = PurchaseOrderEntity.builder()
-                .poNo(generatePONumber())
-                .vendorId(vendorId)
-                .vendorName(vendorName)
-                .vendorContact(vendorContact)
-                .quotationId(quotationId)
-                .rfqId(rfqId != null ? rfqId : quotation.getRfqId())
-                .orderDate(orderDate.atStartOfDay())
-                .expectedDelivery(expectedDelivery.atStartOfDay())
-                .status("Draft")
-                .paymentStatus("Pending")
-                .groupName(groupName != null ? groupName : quotation.getGroupName())
-                .subGroupName(subGroupName != null ? subGroupName : quotation.getSubGroupName())
-                .projectId(projectId != null ? projectId : quotation.getProjectId())
-                .deliveryAddress(shippingAddress)
-                .paymentTerms(paymentTerms)
-                .notes(notes)
-                .category(quotation.getCategory())
-                .createdBy(userId)
-                .totalItemsOrdered(0)
-                .totalItemsDelivered(0)
-                .build();
-        
-        // Save PO FIRST to get ID
-        PurchaseOrderEntity savedPO = purchaseOrderRepository.save(po);
-        log.info("Saved PO with ID: {}", savedPO.getId());
-        
-        // Create PO items
-        BigDecimal totalValue = BigDecimal.ZERO;
-        int totalItemsOrdered = 0;
-        List<PurchaseOrderItemEntity> poItems = new ArrayList<>();
-        
-        for (int i = 0; i < itemsData.size(); i++) {
-            Map<String, Object> itemData = itemsData.get(i);
-            
-            BigDecimal quantity = new BigDecimal(itemData.get("quantity").toString());
-            BigDecimal unitPrice = new BigDecimal(itemData.get("unitPrice").toString());
-            BigDecimal gst = new BigDecimal(itemData.get("gst").toString());
-            BigDecimal discount = itemData.containsKey("discount") 
-                ? new BigDecimal(itemData.get("discount").toString()) 
-                : BigDecimal.ZERO;
-            
-            // Calculate line total
-            BigDecimal lineSubtotal = quantity.multiply(unitPrice);
-            BigDecimal discountAmount = lineSubtotal.multiply(discount)
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            BigDecimal taxableAmount = lineSubtotal.subtract(discountAmount);
-            BigDecimal gstAmount = taxableAmount.multiply(gst)
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            BigDecimal lineTotal = taxableAmount.add(gstAmount);
-            
-            PurchaseOrderItemEntity poItem = PurchaseOrderItemEntity.builder()
-                    .purchaseOrder(savedPO)
-                    .lineNo(i + 1)
-                    .itemName(itemData.get("itemName").toString())
-                    .description(itemData.containsKey("itemDescription") 
-                        ? itemData.get("itemDescription").toString() 
-                        : "")
-                    .quantity(quantity)
-                    .deliveredQty(BigDecimal.ZERO)
-                    .unitPrice(unitPrice)
-                    .taxPercent(gst)
-                    .build();
-            
-            poItems.add(poItem);
-            totalValue = totalValue.add(lineTotal);
-            totalItemsOrdered += quantity.intValue();
-        }
-        
-        // Save all items
-        List<PurchaseOrderItemEntity> savedItems = purchaseOrderItemRepository.saveAll(poItems);
-        log.info("Saved {} PO items", savedItems.size());
-        
-        // Update PO totals
-        savedPO.setTotalValue(totalValue.setScale(2, RoundingMode.HALF_UP));
-        savedPO.setTotalItemsOrdered(totalItemsOrdered);
-        savedPO.setTotalItemsDelivered(0);
-        savedPO.setItems(savedItems);
-        purchaseOrderRepository.save(savedPO);
-        
-        log.info("Created PO {} from quotation with {} items, total: {}", 
-            savedPO.getPoNo(), itemsData.size(), totalValue);
-        
-        return savedPO;
-        
-    } catch (Exception e) {
-        log.error("Error creating PO from quotation: {}", e.getMessage(), e);
-        throw new RuntimeException("Failed to create PO: " + e.getMessage());
-    }
-}
-/**
- * Create PO from order books (no quotation) - NEW METHOD
- */
-@Transactional
-public PurchaseOrderEntity createPOFromOrderBooks(
-        Long userId,
-        Long vendorId,
-        String vendorName,
-        String vendorContact,
-        String groupName,
-        String subGroupName,
-        String projectId,
-        String orderDateStr,
-        String expectedDeliveryStr,
-        String paymentTerms,
-        String shippingAddress,
-        String notes,
-        List<Map<String, Object>> itemsData
-) {
-    try {
-        log.info("Creating PO from order books for project {}", projectId);
-        
-        // Parse dates
-        LocalDate orderDate = LocalDate.parse(orderDateStr);
-        LocalDate expectedDelivery = LocalDate.parse(expectedDeliveryStr);
-        
-        // Create PO WITHOUT items first
-        PurchaseOrderEntity po = PurchaseOrderEntity.builder()
-                .poNo(generatePONumber())
-                .vendorId(vendorId)
-                .vendorName(vendorName)
-                .vendorContact(vendorContact)
-                .quotationId(null) // No quotation
-                .rfqId(null)
-                .orderDate(orderDate.atStartOfDay())
-                .expectedDelivery(expectedDelivery.atStartOfDay())
-                .status("Draft")
-                .paymentStatus("Pending")
-                .groupName(groupName)
-                .subGroupName(subGroupName)
-                .projectId(projectId)
-                .deliveryAddress(shippingAddress)
-                .paymentTerms(paymentTerms)
-                .notes(notes)
-                .createdBy(userId)
-                .totalItemsOrdered(0)
-                .totalItemsDelivered(0)
-                .build();
-        
-        // Save PO FIRST
-        PurchaseOrderEntity savedPO = purchaseOrderRepository.save(po);
-        log.info("Saved PO from order books with ID: {}", savedPO.getId());
-        
-        // Create PO items
-        BigDecimal totalValue = BigDecimal.ZERO;
-        int totalItemsOrdered = 0;
-        List<PurchaseOrderItemEntity> poItems = new ArrayList<>();
-        
-        for (int i = 0; i < itemsData.size(); i++) {
-            Map<String, Object> itemData = itemsData.get(i);
-            
-            BigDecimal quantity = new BigDecimal(itemData.get("quantity").toString());
-            BigDecimal unitPrice = new BigDecimal(itemData.get("unitPrice").toString());
-            BigDecimal gst = new BigDecimal(itemData.get("gst").toString());
-            BigDecimal discount = itemData.containsKey("discount") 
-                ? new BigDecimal(itemData.get("discount").toString()) 
-                : BigDecimal.ZERO;
-            
-            // Calculate line total
-            BigDecimal lineSubtotal = quantity.multiply(unitPrice);
-            BigDecimal discountAmount = lineSubtotal.multiply(discount)
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            BigDecimal taxableAmount = lineSubtotal.subtract(discountAmount);
-            BigDecimal gstAmount = taxableAmount.multiply(gst)
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-            BigDecimal lineTotal = taxableAmount.add(gstAmount);
-            
-            PurchaseOrderItemEntity poItem = PurchaseOrderItemEntity.builder()
-                    .purchaseOrder(savedPO)
-                    .lineNo(i + 1)
-                    .itemName(itemData.get("itemName").toString())
-                    .description(itemData.containsKey("itemDescription") 
-                        ? itemData.get("itemDescription").toString() 
-                        : "")
-                    .quantity(quantity)
-                    .deliveredQty(BigDecimal.ZERO)
-                    .unitPrice(unitPrice)
-                    .taxPercent(gst)
-                    .build();
-            
-            poItems.add(poItem);
-            totalValue = totalValue.add(lineTotal);
-            totalItemsOrdered += quantity.intValue();
-        }
-        
-        // Save all items
-        List<PurchaseOrderItemEntity> savedItems = purchaseOrderItemRepository.saveAll(poItems);
-        log.info("Saved {} PO items from order books", savedItems.size());
-        
-        // Update PO totals
-        savedPO.setTotalValue(totalValue.setScale(2, RoundingMode.HALF_UP));
-        savedPO.setTotalItemsOrdered(totalItemsOrdered);
-        savedPO.setTotalItemsDelivered(0);
-        savedPO.setItems(savedItems);
-        purchaseOrderRepository.save(savedPO);
-        
-        log.info("Created PO {} from order books with {} items, total: {}", 
-            savedPO.getPoNo(), itemsData.size(), totalValue);
-        
-        return savedPO;
-        
-    } catch (Exception e) {
-        log.error("Error creating PO from order books: {}", e.getMessage(), e);
-        throw new RuntimeException("Failed to create PO: " + e.getMessage());
-    }
-}
-    /**
-     * Create vendor from quotation data
-     * Uses database auto-generated ID to avoid JPA entity state issues
+     * ✅ UPDATED: Create PO from quotation with custom data
+     * Creates vendor IMMEDIATELY if new vendor, links vendorId right away
      */
-    private Long createVendorFromQuotation(QuotationEntity quotation, Long userId) {
+    @Transactional
+    public PurchaseOrderEntity createPOFromQuotationWithCustomData(
+            Long quotationId,
+            Long userId,
+            Long vendorId,
+            String vendorName,
+            String vendorContact,
+            String groupName,
+            String subGroupName,
+            String projectId,
+            String rfqId,
+            String orderDateStr,
+            String expectedDeliveryStr,
+            String paymentTerms,
+            String shippingAddress,
+            String notes,
+            List<Map<String, Object>> itemsData
+    ) {
         try {
-            String vendorName = quotation.getVendorContact() != null 
-                ? "Vendor-" + quotation.getVendorContact().substring(0, Math.min(10, quotation.getVendorContact().length()))
-                : "Auto-Vendor-" + System.currentTimeMillis();
+            log.info("Creating PO from quotation {} with custom data", quotationId);
             
-            // Handle null project_id - use a default value
-            String projectId = quotation.getProjectId();
+            // Get quotation
+            QuotationEntity quotation = quotationRepository.findById(quotationId)
+                    .orElseThrow(() -> new RuntimeException("Quotation not found"));
+            
+            if (!"Approved".equals(quotation.getStatus())) {
+                throw new RuntimeException("Only approved quotations can be converted to PO");
+            }
+            
+            // ✅ CREATE VENDOR IMMEDIATELY if new vendor
+            Long finalVendorId = vendorId;
+            if (vendorId == null && vendorName != null && !vendorName.trim().isEmpty()) {
+                log.info("Creating new vendor immediately: {}", vendorName);
+                finalVendorId = createVendorNow(vendorName, vendorContact, groupName, subGroupName, projectId, userId);
+                log.info("✅ Created vendor with ID: {}", finalVendorId);
+            }
+            
+            // Parse dates
+            LocalDate orderDate = LocalDate.parse(orderDateStr);
+            LocalDate expectedDelivery = LocalDate.parse(expectedDeliveryStr);
+            
+            // Create PO WITHOUT items first
+            PurchaseOrderEntity po = PurchaseOrderEntity.builder()
+                    .poNo(generatePONumber())
+                    .vendorId(finalVendorId) // ✅ Use the newly created vendorId
+                    .vendorName(vendorName)
+                    .vendorContact(vendorContact)
+                    .quotationId(quotationId)
+                    .rfqId(rfqId != null ? rfqId : quotation.getRfqId())
+                    .orderDate(orderDate.atStartOfDay())
+                    .expectedDelivery(expectedDelivery.atStartOfDay())
+                    .status("Draft")
+                    .paymentStatus("Pending")
+                    .groupName(groupName != null ? groupName : quotation.getGroupName())
+                    .subGroupName(subGroupName != null ? subGroupName : quotation.getSubGroupName())
+                    .projectId(projectId != null ? projectId : quotation.getProjectId())
+                    .deliveryAddress(shippingAddress)
+                    .paymentTerms(paymentTerms)
+                    .notes(notes)
+                    .category(quotation.getCategory())
+                    .createdBy(userId)
+                    .totalItemsOrdered(0)
+                    .totalItemsDelivered(0)
+                    .build();
+            
+            // Save PO FIRST to get ID
+            PurchaseOrderEntity savedPO = purchaseOrderRepository.save(po);
+            log.info("Saved PO with ID: {} and vendorId: {}", savedPO.getId(), savedPO.getVendorId());
+            
+            // Create PO items
+            BigDecimal totalValue = BigDecimal.ZERO;
+            int totalItemsOrdered = 0;
+            List<PurchaseOrderItemEntity> poItems = new ArrayList<>();
+            
+            for (int i = 0; i < itemsData.size(); i++) {
+                Map<String, Object> itemData = itemsData.get(i);
+                
+                BigDecimal quantity = new BigDecimal(itemData.get("quantity").toString());
+                BigDecimal unitPrice = new BigDecimal(itemData.get("unitPrice").toString());
+                BigDecimal gst = new BigDecimal(itemData.get("gst").toString());
+                BigDecimal discount = itemData.containsKey("discount") 
+                    ? new BigDecimal(itemData.get("discount").toString()) 
+                    : BigDecimal.ZERO;
+                
+                // Calculate line total
+                BigDecimal lineSubtotal = quantity.multiply(unitPrice);
+                BigDecimal discountAmount = lineSubtotal.multiply(discount)
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                BigDecimal taxableAmount = lineSubtotal.subtract(discountAmount);
+                BigDecimal gstAmount = taxableAmount.multiply(gst)
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                BigDecimal lineTotal = taxableAmount.add(gstAmount);
+                
+                PurchaseOrderItemEntity poItem = PurchaseOrderItemEntity.builder()
+                        .purchaseOrder(savedPO)
+                        .lineNo(i + 1)
+                        .itemName(itemData.get("itemName").toString())
+                        .description(itemData.containsKey("itemDescription") 
+                            ? itemData.get("itemDescription").toString() 
+                            : "")
+                        .quantity(quantity)
+                        .deliveredQty(BigDecimal.ZERO)
+                        .unitPrice(unitPrice)
+                        .taxPercent(gst)
+                        .build();
+                
+                poItems.add(poItem);
+                totalValue = totalValue.add(lineTotal);
+                totalItemsOrdered += quantity.intValue();
+            }
+            
+            // Save all items
+            List<PurchaseOrderItemEntity> savedItems = purchaseOrderItemRepository.saveAll(poItems);
+            log.info("Saved {} PO items", savedItems.size());
+            
+            // Update PO totals
+            savedPO.setTotalValue(totalValue.setScale(2, RoundingMode.HALF_UP));
+            savedPO.setTotalItemsOrdered(totalItemsOrdered);
+            savedPO.setTotalItemsDelivered(0);
+            savedPO.setItems(savedItems);
+            purchaseOrderRepository.save(savedPO);
+            
+            log.info("✅ Created PO {} with vendorId {} from quotation with {} items, total: {}", 
+                savedPO.getPoNo(), savedPO.getVendorId(), itemsData.size(), totalValue);
+            
+            return savedPO;
+            
+        } catch (Exception e) {
+            log.error("Error creating PO from quotation: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to create PO: " + e.getMessage());
+        }
+    }
+
+    /**
+     * ✅ UPDATED: Create PO from order books (no quotation)
+     * Creates vendor IMMEDIATELY if new vendor
+     */
+    @Transactional
+    public PurchaseOrderEntity createPOFromOrderBooks(
+            Long userId,
+            Long vendorId,
+            String vendorName,
+            String vendorContact,
+            String groupName,
+            String subGroupName,
+            String projectId,
+            String orderDateStr,
+            String expectedDeliveryStr,
+            String paymentTerms,
+            String shippingAddress,
+            String notes,
+            List<Map<String, Object>> itemsData
+    ) {
+        try {
+            log.info("Creating PO from order books for project {}", projectId);
+            
+            // ✅ CREATE VENDOR IMMEDIATELY if new vendor
+            Long finalVendorId = vendorId;
+            if (vendorId == null && vendorName != null && !vendorName.trim().isEmpty()) {
+                log.info("Creating new vendor immediately: {}", vendorName);
+                finalVendorId = createVendorNow(vendorName, vendorContact, groupName, subGroupName, projectId, userId);
+                log.info("✅ Created vendor with ID: {}", finalVendorId);
+            }
+            
+            // Parse dates
+            LocalDate orderDate = LocalDate.parse(orderDateStr);
+            LocalDate expectedDelivery = LocalDate.parse(expectedDeliveryStr);
+            
+            // Create PO WITHOUT items first
+            PurchaseOrderEntity po = PurchaseOrderEntity.builder()
+                    .poNo(generatePONumber())
+                    .vendorId(finalVendorId) // ✅ Use the newly created vendorId
+                    .vendorName(vendorName)
+                    .vendorContact(vendorContact)
+                    .quotationId(null) // No quotation
+                    .rfqId(null)
+                    .orderDate(orderDate.atStartOfDay())
+                    .expectedDelivery(expectedDelivery.atStartOfDay())
+                    .status("Draft")
+                    .paymentStatus("Pending")
+                    .groupName(groupName)
+                    .subGroupName(subGroupName)
+                    .projectId(projectId)
+                    .deliveryAddress(shippingAddress)
+                    .paymentTerms(paymentTerms)
+                    .notes(notes)
+                    .createdBy(userId)
+                    .totalItemsOrdered(0)
+                    .totalItemsDelivered(0)
+                    .build();
+            
+            // Save PO FIRST
+            PurchaseOrderEntity savedPO = purchaseOrderRepository.save(po);
+            log.info("Saved PO from order books with ID: {} and vendorId: {}", savedPO.getId(), savedPO.getVendorId());
+            
+            // Create PO items
+            BigDecimal totalValue = BigDecimal.ZERO;
+            int totalItemsOrdered = 0;
+            List<PurchaseOrderItemEntity> poItems = new ArrayList<>();
+            
+            for (int i = 0; i < itemsData.size(); i++) {
+                Map<String, Object> itemData = itemsData.get(i);
+                
+                BigDecimal quantity = new BigDecimal(itemData.get("quantity").toString());
+                BigDecimal unitPrice = new BigDecimal(itemData.get("unitPrice").toString());
+                BigDecimal gst = new BigDecimal(itemData.get("gst").toString());
+                BigDecimal discount = itemData.containsKey("discount") 
+                    ? new BigDecimal(itemData.get("discount").toString()) 
+                    : BigDecimal.ZERO;
+                
+                // Calculate line total
+                BigDecimal lineSubtotal = quantity.multiply(unitPrice);
+                BigDecimal discountAmount = lineSubtotal.multiply(discount)
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                BigDecimal taxableAmount = lineSubtotal.subtract(discountAmount);
+                BigDecimal gstAmount = taxableAmount.multiply(gst)
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                BigDecimal lineTotal = taxableAmount.add(gstAmount);
+                
+                PurchaseOrderItemEntity poItem = PurchaseOrderItemEntity.builder()
+                        .purchaseOrder(savedPO)
+                        .lineNo(i + 1)
+                        .itemName(itemData.get("itemName").toString())
+                        .description(itemData.containsKey("itemDescription") 
+                            ? itemData.get("itemDescription").toString() 
+                            : "")
+                        .quantity(quantity)
+                        .deliveredQty(BigDecimal.ZERO)
+                        .unitPrice(unitPrice)
+                        .taxPercent(gst)
+                        .build();
+                
+                poItems.add(poItem);
+                totalValue = totalValue.add(lineTotal);
+                totalItemsOrdered += quantity.intValue();
+            }
+            
+            // Save all items
+            List<PurchaseOrderItemEntity> savedItems = purchaseOrderItemRepository.saveAll(poItems);
+            log.info("Saved {} PO items from order books", savedItems.size());
+            
+            // Update PO totals
+            savedPO.setTotalValue(totalValue.setScale(2, RoundingMode.HALF_UP));
+            savedPO.setTotalItemsOrdered(totalItemsOrdered);
+            savedPO.setTotalItemsDelivered(0);
+            savedPO.setItems(savedItems);
+            purchaseOrderRepository.save(savedPO);
+            
+            log.info("✅ Created PO {} with vendorId {} from order books with {} items, total: {}", 
+                savedPO.getPoNo(), savedPO.getVendorId(), itemsData.size(), totalValue);
+            
+            return savedPO;
+            
+        } catch (Exception e) {
+            log.error("Error creating PO from order books: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to create PO: " + e.getMessage());
+        }
+    }
+
+    /**
+     * ✅ NEW METHOD: Create vendor immediately and return its ID
+     */
+    private Long createVendorNow(
+            String vendorName,
+            String vendorContact,
+            String groupName,
+            String subGroupName,
+            String projectId,
+            Long userId
+    ) {
+        try {
+            // Check if vendor already exists with this contact
+            Optional<VendorEntity> existingVendor = vendorRepository.findByPhone(vendorContact);
+            if (existingVendor.isPresent()) {
+                log.info("Vendor already exists with contact {}, returning existing vendor ID: {}", 
+                    vendorContact, existingVendor.get().getId());
+                return existingVendor.get().getId();
+            }
+            
+            // Handle null project_id
+            String finalProjectId = projectId;
             if (projectId == null || projectId.trim().isEmpty()) {
-                projectId = "DEFAULT";  // Use default project ID if not set
+                finalProjectId = "DEFAULT";
             }
             
             VendorEntity vendor = VendorEntity.builder()
-                    // Don't set ID - let database auto-generate it
                     .name(vendorName)
                     .email("vendor_" + System.currentTimeMillis() + "@temp.com")
-                    .phone(quotation.getVendorContact())
-                    .rating(quotation.getVendorRating() != null ? quotation.getVendorRating().intValue() : 0)
+                    .phone(vendorContact)
+                    
+                    .rating(0)
                     .status("Active")
-                    .groupName(quotation.getGroupName() != null ? quotation.getGroupName() : "Others")
-                    .subGroupName(quotation.getSubGroupName() != null ? quotation.getSubGroupName() : "General")
-                    .projectId(projectId)  // Now guaranteed non-null
-                    .category(quotation.getCategory() != null ? quotation.getCategory() : "General")
+                    .groupName(groupName != null ? groupName : "Others")
+                    .subGroupName(subGroupName != null ? subGroupName : "General")
+                    .projectId(finalProjectId)
+                    .category("General")
                     .totalOrders(0)
                     .totalPurchaseValue(BigDecimal.ZERO)
                     .createdBy(userId)
                     .build();
             
             VendorEntity savedVendor = vendorRepository.save(vendor);
-            log.info("Created new vendor {} with auto-generated ID: {}", vendorName, savedVendor.getId());
+            log.info("✅ Created new vendor {} with ID: {}", vendorName, savedVendor.getId());
             
             return savedVendor.getId();
             
         } catch (Exception e) {
-            log.error("Error creating vendor: {}", e.getMessage(), e);
+            log.error("Error creating vendor immediately: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to create vendor: " + e.getMessage());
         }
     }
     
     /**
-     * Ensure vendor exists by ID, create if not
-     * Fixed to use auto-generated ID instead of manual assignment
-     */
-    private void ensureVendorExistsById(Long vendorId, QuotationEntity quotation, Long userId) {
-        if (!vendorRepository.existsById(vendorId)) {
-            log.info("Vendor {} does not exist, creating new vendor with auto-generated ID...", vendorId);
-            
-            // Don't use the provided vendorId - let database generate it
-            String vendorName = quotation.getVendorContact() != null 
-                ? "Vendor-" + quotation.getVendorContact()
-                : "Auto-Vendor-" + System.currentTimeMillis();
-            
-            // Handle null project_id
-            String projectId = quotation.getProjectId();
-            if (projectId == null || projectId.trim().isEmpty()) {
-                projectId = "DEFAULT";
-            }
-            
-            VendorEntity vendor = VendorEntity.builder()
-                    // Don't set ID - let database auto-generate
-                    .name(vendorName)
-                    .email("vendor_" + System.currentTimeMillis() + "@temp.com")
-                    .phone(quotation.getVendorContact())
-                    .rating(quotation.getVendorRating() != null ? quotation.getVendorRating().intValue() : 0)
-                    .status("Active")
-                    .groupName(quotation.getGroupName() != null ? quotation.getGroupName() : "Others")
-                    .subGroupName(quotation.getSubGroupName() != null ? quotation.getSubGroupName() : "General")
-                    .projectId(projectId)  // Now guaranteed non-null
-                    .category(quotation.getCategory() != null ? quotation.getCategory() : "General")
-                    .totalOrders(0)
-                    .totalPurchaseValue(BigDecimal.ZERO)
-                    .createdBy(userId)
-                    .build();
-            
-            VendorEntity savedVendor = vendorRepository.save(vendor);
-            log.info("Created vendor with auto-generated ID: {} (original requested: {})", savedVendor.getId(), vendorId);
-            
-            // Update quotation with the actual vendor ID
-            quotation.setVendorId(savedVendor.getId());
-            quotationRepository.save(quotation);
-        }
-    }
-    
-    /**
-     * Update PO status
+     * Update PO status - REMOVED vendor creation logic (now done at PO creation)
      */
     @Transactional
     public PurchaseOrderEntity updateStatus(Long id, String newStatus, Long userId) {
@@ -444,7 +431,7 @@ public PurchaseOrderEntity createPOFromOrderBooks(
         }
         
         if ("Delivered".equals(newStatus) && !"Delivered".equals(oldStatus)) {
-            updateVendorAfterDelivery(po);
+            updateVendorStatsAfterDelivery(po);
         }
         
         log.info("Updated PO {} status from {} to {}", po.getPoNo(), oldStatus, newStatus);
@@ -471,6 +458,7 @@ public PurchaseOrderEntity createPOFromOrderBooks(
     public List<PurchaseOrderEntity> getPurchaseOrdersByVendor(Long vendorId) {
         return purchaseOrderRepository.findByVendorIdOrderByOrderDateDesc(vendorId);
     }
+
     /**
      * Get POs by vendor (supports both vendorId and vendorName)
      */
@@ -514,6 +502,7 @@ public PurchaseOrderEntity createPOFromOrderBooks(
             })
             .collect(Collectors.toList());
     }
+
     /**
      * Mark item as delivered
      */
@@ -539,10 +528,10 @@ public PurchaseOrderEntity createPOFromOrderBooks(
         PurchaseOrderEntity po = getPurchaseOrderById(poId);
         recalculateTotals(po);
         
-        // If all items delivered, change status
+        // If all items delivered, change status and update vendor stats
         if (po.getTotalItemsPending() != null && po.getTotalItemsPending() == 0) {
             po.setStatus("Delivered");
-            updateVendorAfterDelivery(po);
+            updateVendorStatsAfterDelivery(po);
         }
         
         return purchaseOrderRepository.save(po);
@@ -624,11 +613,16 @@ public PurchaseOrderEntity createPOFromOrderBooks(
         // Ensure vendor exists
         Long vendorId = quotation.getVendorId();
         if (vendorId == null) {
-            vendorId = createVendorFromQuotation(quotation, userId);
+            vendorId = createVendorNow(
+                "Vendor-" + quotation.getVendorContact(),
+                quotation.getVendorContact(),
+                quotation.getGroupName(),
+                quotation.getSubGroupName(),
+                quotation.getProjectId(),
+                userId
+            );
             quotation.setVendorId(vendorId);
             quotationRepository.save(quotation);
-        } else {
-            ensureVendorExistsById(vendorId, quotation, userId);
         }
         
         PurchaseOrderEntity po = PurchaseOrderEntity.builder()
@@ -678,7 +672,6 @@ public PurchaseOrderEntity createPOFromOrderBooks(
         log.info("Created PO {} from quotation {}", savedPO.getPoNo(), quotation.getQuoteNo());
         return savedPO;
     }
-    
     
     /**
      * Recalculate PO totals from items
@@ -742,13 +735,21 @@ public PurchaseOrderEntity createPOFromOrderBooks(
         return String.format("PO-2024-%03d", count + 1);
     }
     
-    private void updateVendorAfterDelivery(PurchaseOrderEntity po) {
+    /**
+     * ✅ RENAMED: Update vendor stats after delivery (no longer creates vendor)
+     */
+    private void updateVendorStatsAfterDelivery(PurchaseOrderEntity po) {
+        if (po.getVendorId() == null) {
+            log.warn("Cannot update vendor stats - vendorId is null for PO: {}", po.getPoNo());
+            return;
+        }
+        
         vendorRepository.findById(po.getVendorId()).ifPresent(vendor -> {
             vendor.setLastPurchaseAmount(po.getTotalValue());
             vendor.setLastPurchaseDate(LocalDateTime.now());
             
-            BigDecimal currentTotal = vendor.getTotalPurchaseValue() != null 
-                    ? vendor.getTotalPurchaseValue() 
+            BigDecimal currentTotal = vendor.getTotalPurchaseValue() != null
+                    ? vendor.getTotalPurchaseValue()
                     : BigDecimal.ZERO;
             vendor.setTotalPurchaseValue(currentTotal.add(po.getTotalValue()));
             
@@ -772,11 +773,6 @@ public PurchaseOrderEntity createPOFromOrderBooks(
         private long cancelled;
         private Double totalValue;
     }
-    
-    
-    
-    
-    
     
     /**
      * Get POs for dropdown with filters
@@ -830,19 +826,11 @@ public PurchaseOrderEntity createPOFromOrderBooks(
      * Get POs by vendor for dropdown
      */
     @Transactional(readOnly = true)
-    public List<PurchaseOrderDropdownWrapper> getPurchaseOrdersByVendor1(Long vendorId) {
+    public List<PurchaseOrderDropdownWrapper> getPurchaseOrdersByVendorForDropdown(Long vendorId) {
         List<PurchaseOrderEntity> pos = purchaseOrderRepository.findByVendorId(vendorId);
         
         return pos.stream()
                 .map(this::convertToDropdownWrapper)
                 .collect(Collectors.toList());
     }
-
-	public List<Map<String, Object>> getPurchaseOrdersByVendor(Long vendorId, String vendorName, String groupName,
-			String subGroupName, String projectId) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-	
-	
 }

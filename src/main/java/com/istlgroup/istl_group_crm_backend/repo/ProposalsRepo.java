@@ -12,6 +12,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -213,4 +214,12 @@ public interface ProposalsRepo extends JpaRepository<ProposalsEntity, Long> {
     """)
     int updateCustomerId(@Param("customerId") Long customerId,
                          @Param("leadId") Long leadId);
+    @Query("""
+    	    SELECT p.totalValue
+    	    FROM ProposalsEntity p
+    	    WHERE p.leadId = :leadId
+    	""")
+    	BigDecimal getBudgetByLeadId(@Param("leadId") Long leadId);
+
+
 }
